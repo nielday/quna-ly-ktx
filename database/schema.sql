@@ -74,7 +74,7 @@ CREATE TABLE room_registrations (
     registration_date DATE NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    status ENUM('pending', 'approved', 'rejected', 'active', 'completed') DEFAULT 'pending',
+    status ENUM('pending', 'approved', 'rejected', 'active', 'checked_in', 'completed') DEFAULT 'pending',
     approved_by INT,
     approved_at TIMESTAMP NULL,
     notes TEXT,
@@ -214,10 +214,14 @@ CREATE INDEX idx_rooms_building ON rooms(building_id);
 CREATE INDEX idx_rooms_status ON rooms(status);
 CREATE INDEX idx_students_faculty ON students(faculty);
 CREATE INDEX idx_registrations_status ON room_registrations(status);
+CREATE INDEX idx_registrations_room ON room_registrations(room_id);
 CREATE INDEX idx_registrations_dates ON room_registrations(start_date, end_date);
 CREATE INDEX idx_utility_room_date ON utility_readings(room_id, reading_date);
+CREATE INDEX idx_utility_paid ON utility_readings(is_paid);
 CREATE INDEX idx_payments_student ON payments(student_id);
 CREATE INDEX idx_payments_date ON payments(payment_date);
+CREATE INDEX idx_equipment_status ON equipment(status);
+CREATE INDEX idx_equipment_room ON equipment(room_id);
 CREATE INDEX idx_maintenance_status ON maintenance_requests(status);
 CREATE INDEX idx_notifications_type ON notifications(type);
 CREATE INDEX idx_feedback_status ON feedback(status);
