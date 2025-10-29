@@ -1,0 +1,40 @@
+# Logs
+api/logs/*.log
+baitaplon/logs/*
+*.log
+
+# Uploads
+baitaplon/uploads/*
+uploads/*
+
+# Configuration files with sensitive data
+config/config.php
+config/database.php
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.sublime-*
+.DS_Store
+Thumbs.db
+
+# Windows
+desktop.ini
+ehthumbs.db
+
+# PHP
+vendor/
+composer.phar
+composer.lock
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Cache
+cache/
+*.cache
+
