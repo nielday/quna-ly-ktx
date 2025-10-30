@@ -1,6 +1,7 @@
 <?php
-require_once '../config/database.php';
-require_once '../config/logger.php';
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 class Student {
     private $conn;
@@ -120,16 +121,17 @@ class Student {
                            VALUES (:user_id, :student_code, :faculty, :class_name, :gender, :date_of_birth, :hometown, :emergency_contact, :emergency_phone, :id_card)";
             $studentStmt = $this->conn->prepare($studentQuery);
             
-            $studentStmt->bindParam(':user_id', $userId);
-            $studentStmt->bindParam(':student_code', $data['student_code']);
-            $studentStmt->bindParam(':faculty', $data['faculty']);
-            $studentStmt->bindParam(':class_name', $data['class_name']);
-            $studentStmt->bindParam(':gender', $data['gender']);
-            $studentStmt->bindParam(':date_of_birth', $data['date_of_birth']);
-            $studentStmt->bindParam(':hometown', $data['hometown']);
-            $studentStmt->bindParam(':emergency_contact', $data['emergency_contact']);
-            $studentStmt->bindParam(':emergency_phone', $data['emergency_phone']);
-            $studentStmt->bindParam(':id_card', $data['id_card']);
+            // Bind với type hints để xử lý NULL đúng cách
+            $studentStmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+            $studentStmt->bindValue(':student_code', $data['student_code'], PDO::PARAM_STR);
+            $studentStmt->bindValue(':faculty', $data['faculty'], PDO::PARAM_STR);
+            $studentStmt->bindValue(':class_name', $data['class_name'], $data['class_name'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':gender', $data['gender'], $data['gender'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':date_of_birth', $data['date_of_birth'], $data['date_of_birth'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':hometown', $data['hometown'], $data['hometown'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':emergency_contact', $data['emergency_contact'], $data['emergency_contact'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':emergency_phone', $data['emergency_phone'], $data['emergency_phone'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $studentStmt->bindValue(':id_card', $data['id_card'], $data['id_card'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
             
             if (!$studentStmt->execute()) {
                 throw new Exception("Failed to create student");
@@ -185,8 +187,11 @@ class Student {
             $studentFields = [];
             $studentParams = [':id' => $studentId];
             
+            // Danh sách các trường được phép cập nhật
+            $allowedFields = ['student_code', 'faculty', 'class_name', 'gender', 'date_of_birth', 'hometown', 'emergency_contact', 'emergency_phone', 'id_card'];
+            
             foreach ($data as $key => $value) {
-                if (in_array($key, ['student_code', 'faculty', 'class_name', 'gender', 'date_of_birth', 'hometown', 'emergency_contact', 'emergency_phone', 'id_card'])) {
+                if (in_array($key, $allowedFields)) {
                     $studentFields[] = "$key = :$key";
                     $studentParams[":$key"] = $value;
                 }

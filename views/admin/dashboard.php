@@ -88,11 +88,14 @@
                     <a class="nav-link active" href="#" data-section="dashboard">
                         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
                     </a>
+                    <a class="nav-link" href="#" data-section="users">
+                        <i class="fas fa-users me-2"></i>Danh sách người dùng
+                    </a>
                     <a class="nav-link" href="#" data-section="rooms">
                         <i class="fas fa-bed me-2"></i>Danh sách phòng
                     </a>
                     <a class="nav-link" href="#" data-section="students">
-                        <i class="fas fa-users me-2"></i>Quản lý sinh viên
+                        <i class="fas fa-user-graduate me-2"></i>Quản lý sinh viên
                     </a>
                     <a class="nav-link" href="#" data-section="registrations">
                         <i class="fas fa-clipboard-list me-2"></i>Đăng ký phòng
@@ -117,9 +120,6 @@
                     </a>
                     <a class="nav-link" href="#" data-section="reports">
                         <i class="fas fa-chart-bar me-2"></i>Báo cáo
-                    </a>
-                    <a class="nav-link" href="#" data-section="users">
-                        <i class="fas fa-user-cog me-2"></i>Quản lý tài khoản
                     </a>
                 </nav>
                 
@@ -275,13 +275,18 @@
             // Sidebar navigation
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.addEventListener('click', function(e) {
-                    e.preventDefault();
                     const section = this.getAttribute('data-section');
-                    loadSection(section);
                     
-                    // Update active state
-                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                    this.classList.add('active');
+                    // Chỉ preventDefault cho các link có data-section
+                    if (section) {
+                        e.preventDefault();
+                        loadSection(section);
+                        
+                        // Update active state
+                        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                        this.classList.add('active');
+                    }
+                    // Các link không có data-section sẽ hoạt động bình thường (như user-management.php)
                 });
             });
         });
@@ -463,6 +468,10 @@
                     dynamicContent.style.display = 'none';
                     pageTitle.textContent = 'Dashboard';
                     break;
+                case 'users':
+                    pageTitle.textContent = 'Danh sách người dùng';
+                    loadUsersSection();
+                    break;
                 case 'rooms':
                     pageTitle.textContent = 'Quản lý phòng';
                     loadRoomsSection();
@@ -502,10 +511,6 @@
                 case 'reports':
                     pageTitle.textContent = 'Báo cáo';
                     loadReportsSection();
-                    break;
-                case 'users':
-                    pageTitle.textContent = 'Quản lý tài khoản';
-                    loadUsersSection();
                     break;
                 default:
                     pageTitle.textContent = 'Chức năng đang phát triển';
@@ -556,6 +561,62 @@
         }
 
         // Placeholder functions for other sections
+        function loadUsersSection() {
+            document.getElementById('dynamicContent').innerHTML = `
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-users me-2"></i>Danh sách người dùng</h5>
+                        <a href="user-management.php" class="btn btn-primary">
+                            <i class="fas fa-user-cog me-2"></i>Quản lý người dùng
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <select class="form-select" id="userRoleFilter" onchange="loadUsersData()">
+                                        <option value="">Tất cả vai trò</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="staff">Cán bộ</option>
+                                        <option value="student">Sinh viên</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <input type="text" class="form-control" id="userSearchInput" 
+                                           placeholder="Tìm kiếm theo username, email, họ tên..."
+                                           onkeyup="handleUserSearch()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Avatar</th>
+                                        <th>Username</th>
+                                        <th>Họ tên</th>
+                                        <th>Email</th>
+                                        <th>Vai trò</th>
+                                        <th>Trạng thái</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted">
+                                            <i class="fas fa-spinner fa-spin"></i> Đang tải...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            loadUsersData();
+        }
+
         function loadRoomsSection() {
             document.getElementById('dynamicContent').innerHTML = `
                 <div class="card">
@@ -632,6 +693,84 @@
             loadStudentsData();
         }
 
+        async function loadUsersData() {
+            try {
+                const role = document.getElementById('userRoleFilter')?.value || '';
+                const search = document.getElementById('userSearchInput')?.value || '';
+                
+                let url = '../../api/admin/users.php?limit=50';
+                if (role) url += `&role=${role}`;
+                if (search) url += `&search=${encodeURIComponent(search)}`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('usersTableBody');
+                
+                if (data.success && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map(user => {
+                        const roleColors = {
+                            'admin': 'danger',
+                            'staff': 'warning',
+                            'student': 'info'
+                        };
+                        const roleColor = roleColors[user.role] || 'secondary';
+                        const roleText = user.role === 'admin' ? 'Admin' : 
+                                        user.role === 'staff' ? 'Cán bộ' : 'Sinh viên';
+                        const statusBadge = user.is_active == 1 ? 
+                            '<span class="badge bg-success">Hoạt động</span>' : 
+                            '<span class="badge bg-secondary">Không hoạt động</span>';
+                        
+                        // Avatar placeholder
+                        const avatarInitial = user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U';
+                        const avatarColors = {
+                            'admin': 'bg-danger',
+                            'staff': 'bg-warning',
+                            'student': 'bg-info'
+                        };
+                        const avatarColor = avatarColors[user.role] || 'bg-secondary';
+                        
+                        return `
+                        <tr>
+                            <td>${user.id}</td>
+                            <td>
+                                <div class="rounded-circle ${avatarColor} text-white d-inline-flex align-items-center justify-content-center" 
+                                     style="width: 35px; height: 35px; font-weight: bold;">
+                                    ${avatarInitial}
+                                </div>
+                            </td>
+                            <td>${user.username}</td>
+                            <td>${user.full_name || 'N/A'}</td>
+                            <td>${user.email || 'N/A'}</td>
+                            <td><span class="badge bg-${roleColor}">${roleText}</span></td>
+                            <td>${statusBadge}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="viewUserDetails(${user.id})" title="Xem chi tiết">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <a href="user-management.php" class="btn btn-sm btn-primary" title="Quản lý">
+                                    <i class="fas fa-user-cog"></i>
+                                </a>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Không có dữ liệu</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>';
+            }
+        }
+
+        let userSearchTimeout = null;
+        function handleUserSearch() {
+            clearTimeout(userSearchTimeout);
+            userSearchTimeout = setTimeout(() => {
+                loadUsersData();
+            }, 500);
+        }
+
         async function loadRoomsData() {
             try {
                 const response = await fetch('../../api/rooms.php');
@@ -656,6 +795,14 @@
                                 </span>
                             </td>
                             <td>${formattedFee}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="viewRoomDetails(${room.id})" title="Xem chi tiết">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <a href="room-management.php?id=${room.id}" class="btn btn-sm btn-warning" title="Chỉnh sửa">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                            </td>
                         </tr>`;
                     }).join('');
                 } else {
@@ -724,6 +871,182 @@
                 'reserved': 'Đã đặt'
             };
             return texts[status] || status;
+        }
+
+        // View room details in modal
+        async function viewRoomDetails(roomId) {
+            try {
+                const response = await fetch(`../../api/rooms.php?id=${roomId}`);
+                const data = await response.json();
+                
+                console.log('Room details response:', data); // Debug
+                
+                if (data.success && data.data) {
+                    const room = data.data;
+                    const statusColor = getStatusColor(room.status);
+                    const statusText = getStatusText(room.status);
+                    
+                    const modalContent = `
+                        <div class="modal fade" id="roomDetailsModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header bg-primary text-white">
+                                        <h5 class="modal-title">
+                                            <i class="fas fa-door-open me-2"></i>Chi tiết phòng ${room.room_number}
+                                        </h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>Tòa nhà:</strong> ${room.building_name || 'N/A'}</p>
+                                                <p><strong>Địa chỉ:</strong> ${room.building_address || 'N/A'}</p>
+                                                <p><strong>Tầng:</strong> ${room.floor_number}</p>
+                                                <p><strong>Sức chứa:</strong> ${room.capacity} người</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Đang ở:</strong> ${room.current_occupancy || 0} người</p>
+                                                <p><strong>Loại phòng:</strong> ${room.room_type ? room.room_type.toUpperCase() : 'Standard'}</p>
+                                                <p><strong>Giá thuê:</strong> ${formatCurrency(room.monthly_fee)}/tháng</p>
+                                                <p><strong>Trạng thái:</strong> 
+                                                    <span class="badge bg-${statusColor}">${statusText}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        ${room.description ? `<div class="mt-3"><strong>Mô tả:</strong><p>${room.description}</p></div>` : ''}
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                                        <a href="room-management.php?id=${room.id}" class="btn btn-primary">
+                                            <i class="fas fa-edit me-2"></i>Chỉnh sửa
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Remove old modal if exists
+                    const oldModal = document.getElementById('roomDetailsModal');
+                    if (oldModal) oldModal.remove();
+                    
+                    // Add new modal
+                    document.body.insertAdjacentHTML('beforeend', modalContent);
+                    
+                    // Show modal
+                    const modal = new bootstrap.Modal(document.getElementById('roomDetailsModal'));
+                    modal.show();
+                } else {
+                    alert('Không thể tải thông tin phòng');
+                }
+            } catch (error) {
+                console.error('Error loading room details:', error);
+                alert('Lỗi khi tải thông tin phòng');
+            }
+        }
+
+        // View user details in modal
+        async function viewUserDetails(userId) {
+            try {
+                const response = await fetch(`../../api/admin/users.php?id=${userId}`);
+                const data = await response.json();
+                
+                console.log('User details response:', data); // Debug
+                
+                if (data.success && data.data) {
+                    const user = data.data;
+                    
+                    const roleColors = {
+                        'admin': 'danger',
+                        'staff': 'warning',
+                        'student': 'info'
+                    };
+                    const roleColor = roleColors[user.role] || 'secondary';
+                    const roleText = user.role === 'admin' ? 'Admin' : 
+                                    user.role === 'staff' ? 'Cán bộ' : 'Sinh viên';
+                    
+                    const statusBadge = user.is_active == 1 ? 
+                        '<span class="badge bg-success">Hoạt động</span>' : 
+                        '<span class="badge bg-secondary">Không hoạt động</span>';
+                    
+                    const avatarInitial = user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U';
+                    const avatarColor = roleColors[user.role] ? `bg-${roleColors[user.role]}` : 'bg-secondary';
+                    
+                    const modalContent = `
+                        <div class="modal fade" id="userDetailsModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header bg-primary text-white">
+                                        <h5 class="modal-title">
+                                            <i class="fas fa-user me-2"></i>Chi tiết người dùng
+                                        </h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="text-center mb-4">
+                                            <div class="rounded-circle ${avatarColor} text-white d-inline-flex align-items-center justify-content-center" 
+                                                 style="width: 80px; height: 80px; font-size: 2rem; font-weight: bold;">
+                                                ${avatarInitial}
+                                            </div>
+                                            <h4 class="mt-3">${user.full_name || 'N/A'}</h4>
+                                            <span class="badge bg-${roleColor}">${roleText}</span>
+                                            ${statusBadge}
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>ID:</strong> ${user.id}</p>
+                                                <p><strong>Username:</strong> ${user.username}</p>
+                                                <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Số điện thoại:</strong> ${user.phone || 'N/A'}</p>
+                                                <p><strong>Vai trò:</strong> <span class="badge bg-${roleColor}">${roleText}</span></p>
+                                                <p><strong>Ngày tạo:</strong> ${user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : 'N/A'}</p>
+                                            </div>
+                                        </div>
+                                        ${user.student_info ? `
+                                        <hr>
+                                        <h6><i class="fas fa-graduation-cap me-2"></i>Thông tin sinh viên</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>Mã sinh viên:</strong> ${user.student_info.student_code || 'N/A'}</p>
+                                                <p><strong>Khoa:</strong> ${user.student_info.faculty || 'N/A'}</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Lớp:</strong> ${user.student_info.class || 'N/A'}</p>
+                                                <p><strong>Giới tính:</strong> ${user.student_info.gender === 'male' ? 'Nam' : user.student_info.gender === 'female' ? 'Nữ' : 'Khác'}</p>
+                                            </div>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                                        <a href="user-management.php" class="btn btn-primary">
+                                            <i class="fas fa-user-cog me-2"></i>Quản lý người dùng
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Remove old modal if exists
+                    const oldModal = document.getElementById('userDetailsModal');
+                    if (oldModal) oldModal.remove();
+                    
+                    // Add new modal
+                    document.body.insertAdjacentHTML('beforeend', modalContent);
+                    
+                    // Show modal
+                    const modal = new bootstrap.Modal(document.getElementById('userDetailsModal'));
+                    modal.show();
+                } else {
+                    alert('Không thể tải thông tin người dùng');
+                }
+            } catch (error) {
+                console.error('Error loading user details:', error);
+                alert('Lỗi khi tải thông tin người dùng');
+            }
         }
 
         // Placeholder functions for modals and actions
@@ -1956,41 +2279,1022 @@
             return badges[status] || status;
         }
 
-        function loadNotificationsSection() {
+        async function loadNotificationsSection() {
             dynamicContent.innerHTML = `
-                <div class="card">
-                    <div class="card-body text-center">
-                        <i class="fas fa-bell fa-3x text-muted mb-3"></i>
-                        <h5>Quản lý thông báo</h5>
-                        <p class="text-muted">Chức năng này sẽ có sẵn trong phiên bản tiếp theo.</p>
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-bell me-2 text-primary"></i>
+                                        Trung tâm thông báo
+                                    </h5>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="loadNotificationsSection()">
+                                        <i class="fas fa-sync-alt me-1"></i>Làm mới
+                                    </button>
+                                </div>
+                                <p class="text-muted mb-0">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Tổng hợp các hoạt động và yêu cầu cần xử lý từ sinh viên
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thống kê nhanh -->
+                <div class="row mb-4" id="notificationStats">
+                    <div class="col-12">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Đang tải...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bộ lọc -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-outline-primary active" data-filter="all" onclick="filterNotifications('all')">
+                                        <i class="fas fa-list me-1"></i>Tất cả
+                                    </button>
+                                    <button class="btn btn-outline-info" data-filter="registrations" onclick="filterNotifications('registrations')">
+                                        <i class="fas fa-user-plus me-1"></i>Đăng ký phòng
+                                    </button>
+                                    <button class="btn btn-outline-warning" data-filter="feedback" onclick="filterNotifications('feedback')">
+                                        <i class="fas fa-comments me-1"></i>Phản hồi
+                                    </button>
+                                    <button class="btn btn-outline-danger" data-filter="maintenance" onclick="filterNotifications('maintenance')">
+                                        <i class="fas fa-wrench me-1"></i>Bảo trì
+                                    </button>
+                                    <button class="btn btn-outline-success" data-filter="payments" onclick="filterNotifications('payments')">
+                                        <i class="fas fa-dollar-sign me-1"></i>Thanh toán
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danh sách thông báo -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div id="notificationsList">
+                                    <div class="text-center py-5">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Đang tải...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
+
+            // Load dữ liệu
+            await loadNotificationData();
+        }
+
+        let currentNotificationFilter = 'all';
+        let allNotificationsData = [];
+
+        async function loadNotificationData() {
+            try {
+                console.log('Loading notification data...');
+                
+                // Helper function to safely fetch
+                const safeFetch = async (url, name) => {
+                    try {
+                        console.log(`Fetching ${name} from ${url}`);
+                        const response = await fetch(url);
+                        const text = await response.text();
+                        
+                        console.log(`${name} response status:`, response.status);
+                        console.log(`${name} response text:`, text.substring(0, 200));
+                        
+                        if (!response.ok) {
+                            console.warn(`${name} API returned status ${response.status}`);
+                            return { success: false, data: [] };
+                        }
+                        
+                        if (!text || text.trim() === '') {
+                            console.warn(`${name} API returned empty response`);
+                            return { success: false, data: [] };
+                        }
+                        
+                        const json = JSON.parse(text);
+                        console.log(`${name} parsed successfully:`, json);
+                        return json;
+                    } catch (e) {
+                        console.error(`Error with ${name} API:`, e);
+                        return { success: false, data: [] };
+                    }
+                };
+
+                // Fetch data từ nhiều nguồn - thử tuần tự để dễ debug
+                const registrations = await safeFetch('../../api/registrations.php?status=pending', 'Registrations');
+                const feedback = await safeFetch('../../api/feedback.php?action=list&status=new', 'Feedback');
+                const maintenance = await safeFetch('../../api/maintenance.php?action=list&status=pending', 'Maintenance');
+                const activities = await safeFetch('../../api/admin/activities.php?limit=20', 'Activities');
+
+                // Tạo array thông báo tổng hợp
+                allNotificationsData = [];
+
+                // Đăng ký phòng pending
+                if (registrations.success && registrations.data) {
+                    registrations.data.forEach(reg => {
+                        allNotificationsData.push({
+                            type: 'registrations',
+                            icon: 'fa-user-plus',
+                            iconColor: 'info',
+                            title: 'Đăng ký phòng mới',
+                            message: '<strong>' + reg.student_name + '</strong> (' + reg.student_code + ') đăng ký phòng <strong>' + reg.room_number + '</strong> - ' + reg.building_name,
+                            time: reg.created_at,
+                            action: 'registrations',
+                            badge: 'Chờ duyệt',
+                            badgeColor: 'warning',
+                            urgent: false
+                        });
+                    });
+                }
+
+                // Feedback mới
+                if (feedback.success && feedback.data) {
+                    feedback.data.filter(f => f.status === 'new').forEach(fb => {
+                        allNotificationsData.push({
+                            type: 'feedback',
+                            icon: 'fa-comments',
+                            iconColor: 'warning',
+                            title: 'Phản hồi mới',
+                            message: '<strong>' + fb.student_name + '</strong>: ' + fb.subject + ' - <em class="text-muted">' + fb.category + '</em>',
+                            time: fb.created_at,
+                            action: 'feedback',
+                            badge: 'Chưa xử lý',
+                            badgeColor: 'danger',
+                            urgent: fb.category === 'complaint'
+                        });
+                    });
+                }
+
+                // Yêu cầu bảo trì pending
+                if (maintenance.success && maintenance.data) {
+                    maintenance.data.forEach(maint => {
+                        allNotificationsData.push({
+                            type: 'maintenance',
+                            icon: 'fa-wrench',
+                            iconColor: 'danger',
+                            title: 'Yêu cầu bảo trì',
+                            message: 'Phòng <strong>' + maint.room_number + '</strong> - ' + maint.building_name + ': ' + maint.description.substring(0, 60) + '...',
+                            time: maint.created_at,
+                            action: 'maintenance',
+                            badge: maint.priority === 'urgent' ? 'Khẩn cấp' : 'Chờ xử lý',
+                            badgeColor: maint.priority === 'urgent' ? 'danger' : 'warning',
+                            urgent: maint.priority === 'urgent' || maint.priority === 'high'
+                        });
+                    });
+                }
+
+                // Activity logs quan trọng (API dùng key "activities" thay vì "data")
+                const activityData = activities.activities || activities.data || [];
+                if (activities.success && activityData.length > 0) {
+                    activityData.forEach(act => {
+                        if (act.action.includes('created') || act.action.includes('registered')) {
+                            let type = 'activity';
+                            let icon = 'fa-history';
+                            let iconColor = 'secondary';
+                            let title = 'Hoạt động mới';
+                            
+                            if (act.action.includes('student')) {
+                                type = 'students';
+                                icon = 'fa-user-graduate';
+                                iconColor = 'success';
+                                title = 'Sinh viên mới đăng ký';
+                            } else if (act.action.includes('payment')) {
+                                type = 'payments';
+                                icon = 'fa-dollar-sign';
+                                iconColor = 'success';
+                                title = 'Thanh toán mới';
+                            }
+
+                            allNotificationsData.push({
+                                type: type,
+                                icon: icon,
+                                iconColor: iconColor,
+                                title: title,
+                                message: act.action,
+                                time: act.created_at,
+                                action: type,
+                                badge: 'Hoạt động',
+                                badgeColor: 'info',
+                                urgent: false
+                            });
+                        }
+                    });
+                }
+
+                // Sắp xếp theo thời gian (mới nhất trước, ưu tiên urgent)
+                allNotificationsData.sort((a, b) => {
+                    if (a.urgent && !b.urgent) return -1;
+                    if (!a.urgent && b.urgent) return 1;
+                    return new Date(b.time) - new Date(a.time);
+                });
+
+                console.log('Total notifications:', allNotificationsData.length);
+                
+                // Hiển thị stats
+                displayNotificationStats();
+                
+                // Hiển thị danh sách
+                displayNotifications();
+
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+                console.error('Error stack:', error.stack);
+                
+                document.getElementById('notificationStats').innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Lỗi khi tải thông báo</strong>
+                            <p class="mb-0 mt-2 small">Vui lòng mở Console (F12) để xem chi tiết lỗi.</p>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('notificationsList').innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Không thể tải thông báo</h5>
+                        <p class="mb-2">Có thể do:</p>
+                        <ul class="mb-0">
+                            <li>Bạn chưa đăng nhập</li>
+                            <li>API server chưa chạy</li>
+                            <li>Thiếu dữ liệu trong database</li>
+                        </ul>
+                        <hr>
+                        <button class="btn btn-primary btn-sm mt-2" onclick="loadNotificationsSection()">
+                            <i class="fas fa-sync-alt me-1"></i>Thử lại
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function displayNotificationStats() {
+            const stats = {
+                all: allNotificationsData.length,
+                registrations: allNotificationsData.filter(n => n.type === 'registrations').length,
+                feedback: allNotificationsData.filter(n => n.type === 'feedback').length,
+                maintenance: allNotificationsData.filter(n => n.type === 'maintenance').length,
+                payments: allNotificationsData.filter(n => n.type === 'payments').length,
+                urgent: allNotificationsData.filter(n => n.urgent).length
+            };
+
+            document.getElementById('notificationStats').innerHTML = `
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center">
+                        <div class="card-body">
+                            <h3 class="mb-1 text-primary">${stats.all}</h3>
+                            <small class="text-muted">Tổng số</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center ${stats.registrations > 0 ? 'border-start border-info border-3' : ''}">
+                        <div class="card-body">
+                            <h3 class="mb-1 text-info">${stats.registrations}</h3>
+                            <small class="text-muted">Đăng ký</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center ${stats.feedback > 0 ? 'border-start border-warning border-3' : ''}">
+                        <div class="card-body">
+                            <h3 class="mb-1 text-warning">${stats.feedback}</h3>
+                            <small class="text-muted">Phản hồi</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center ${stats.maintenance > 0 ? 'border-start border-danger border-3' : ''}">
+                        <div class="card-body">
+                            <h3 class="mb-1 text-danger">${stats.maintenance}</h3>
+                            <small class="text-muted">Bảo trì</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center ${stats.payments > 0 ? 'border-start border-success border-3' : ''}">
+                        <div class="card-body">
+                            <h3 class="mb-1 text-success">${stats.payments}</h3>
+                            <small class="text-muted">Thanh toán</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card border-0 shadow-sm text-center ${stats.urgent > 0 ? 'bg-danger text-white' : ''}">
+                        <div class="card-body">
+                            <h3 class="mb-1 ${stats.urgent > 0 ? 'text-white' : ''}">${stats.urgent}</h3>
+                            <small class="${stats.urgent > 0 ? 'text-white' : 'text-muted'}">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Khẩn cấp
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayNotifications() {
+            const filteredData = currentNotificationFilter === 'all' 
+                ? allNotificationsData 
+                : allNotificationsData.filter(n => n.type === currentNotificationFilter);
+
+            if (filteredData.length === 0) {
+                document.getElementById('notificationsList').innerHTML = `
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">Không có thông báo nào</h5>
+                        <p class="text-muted">Tất cả đều đã được xử lý!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush">';
+            
+            filteredData.forEach(notification => {
+                const timeAgo = getTimeAgo(notification.time);
+                const urgentClass = notification.urgent ? 'border-start border-danger border-3' : '';
+                
+                html += `
+                    <div class="list-group-item list-group-item-action ${urgentClass}" 
+                         style="cursor: pointer; transition: all 0.2s;"
+                         onclick="handleNotificationClick('${notification.action}')"
+                         onmouseover="this.style.backgroundColor='#f8f9fa'"
+                         onmouseout="this.style.backgroundColor='white'">
+                        <div class="d-flex w-100 align-items-start">
+                            <div class="me-3">
+                                <div class="rounded-circle bg-${notification.iconColor} bg-opacity-10 p-3">
+                                    <i class="fas ${notification.icon} fa-lg text-${notification.iconColor}"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <h6 class="mb-1">
+                                            ${notification.urgent ? '<i class="fas fa-exclamation-circle text-danger me-1"></i>' : ''}
+                                            ${notification.title}
+                                        </h6>
+                                        <span class="badge bg-${notification.badgeColor}">${notification.badge}</span>
+                                    </div>
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>${timeAgo}
+                                    </small>
+                                </div>
+                                <p class="mb-0 text-muted">${notification.message}</p>
+                            </div>
+                            <div class="ms-3">
+                                <i class="fas fa-chevron-right text-muted"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            document.getElementById('notificationsList').innerHTML = html;
+        }
+
+        function filterNotifications(filter) {
+            currentNotificationFilter = filter;
+            
+            // Update active button
+            document.querySelectorAll('[data-filter]').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+            
+            // Display filtered results
+            displayNotifications();
+        }
+
+        function handleNotificationClick(action) {
+            // Chuyển đến section tương ứng
+            const sectionMap = {
+                'registrations': 'registrations',
+                'feedback': 'feedback',
+                'maintenance': 'maintenance',
+                'payments': 'payments',
+                'students': 'students',
+                'activity': 'dashboard'
+            };
+            
+            const section = sectionMap[action] || 'dashboard';
+            
+            // Trigger navigation
+            document.querySelector(`[data-section="${section}"]`).click();
+        }
+
+        function getTimeAgo(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+            
+            if (seconds < 60) return 'Vừa xong';
+            if (seconds < 3600) return Math.floor(seconds / 60) + ' phút trước';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + ' giờ trước';
+            if (seconds < 604800) return Math.floor(seconds / 86400) + ' ngày trước';
+            
+            return date.toLocaleDateString('vi-VN');
         }
 
         function loadReportsSection() {
             dynamicContent.innerHTML = `
-                <div class="card">
-                    <div class="card-body text-center">
-                        <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
-                        <h5>Báo cáo & Thống kê</h5>
-                        <p class="text-muted">Chức năng này sẽ có sẵn trong phiên bản tiếp theo.</p>
+                <div class="reports-section">
+                    <!-- Filter Section -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Lọc báo cáo</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Từ ngày</label>
+                                    <input type="date" id="reportStartDate" class="form-control" value="${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Đến ngày</label>
+                                    <input type="date" id="reportEndDate" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Khoảng thời gian</label>
+                                    <select id="reportPeriod" class="form-select">
+                                        <option value="custom">Tùy chọn</option>
+                                        <option value="this_month">Tháng này</option>
+                                        <option value="last_month">Tháng trước</option>
+                                        <option value="this_year">Năm nay</option>
+                                        <option value="last_year">Năm trước</option>
+                                        <option value="last_3_months">3 tháng gần đây</option>
+                                        <option value="last_6_months">6 tháng gần đây</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-12">
+                                    <button class="btn btn-primary" onclick="loadReportsData()">
+                                        <i class="fas fa-search me-2"></i>Xem báo cáo
+                                    </button>
+                                    <button class="btn btn-success" onclick="exportReport()">
+                                        <i class="fas fa-file-excel me-2"></i>Xuất Excel
+                                    </button>
+                                    <button class="btn btn-danger" onclick="printReport()">
+                                        <i class="fas fa-print me-2"></i>In báo cáo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary Cards -->
+                    <div class="row mb-4" id="reportSummaryCards">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                            <p>Đang tải dữ liệu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Charts Section -->
+                    <div class="row mb-4">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Doanh thu theo ngày</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="dailyRevenueChart" height="80"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Phân loại doanh thu</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="revenueTypeChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Phân bố sinh viên theo khoa</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="studentsByFacultyChart" height="250"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Trạng thái đăng ký phòng</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="registrationStatusChart" height="250"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Tables -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0"><i class="fas fa-table me-2"></i>Top 10 phòng có doanh thu cao</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover" id="topRoomsTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>STT</th>
+                                                    <th>Phòng</th>
+                                                    <th>Tòa nhà</th>
+                                                    <th>Số lần thanh toán</th>
+                                                    <th>Tổng doanh thu</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td colspan="5" class="text-center text-muted">
+                                                        <i class="fas fa-spinner fa-spin"></i> Đang tải...
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Details -->
+                    <div class="row" id="detailedStatsSection">
+                        <!-- Sẽ được load động -->
                     </div>
                 </div>
             `;
+            
+            // Initialize charts
+            initializeReportCharts();
+            // Load default data
+            loadReportsData();
         }
 
-        function loadUsersSection() {
-            dynamicContent.innerHTML = `
-                <div class="card">
-                    <div class="card-body text-center">
-                        <i class="fas fa-user-cog fa-3x text-muted mb-3"></i>
-                        <h5>Quản lý tài khoản</h5>
-                        <p class="text-muted">Chức năng này sẽ có sẵn trong phiên bản tiếp theo.</p>
+        // Initialize report charts
+        function initializeReportCharts() {
+            // Daily Revenue Chart
+            const dailyCtx = document.getElementById('dailyRevenueChart')?.getContext('2d');
+            if (dailyCtx) {
+                window.dailyRevenueChart = new Chart(dailyCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Doanh thu (VNĐ)',
+                            data: [],
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return formatCurrency(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Revenue Type Chart
+            const revenueTypeCtx = document.getElementById('revenueTypeChart')?.getContext('2d');
+            if (revenueTypeCtx) {
+                window.revenueTypeChart = new Chart(revenueTypeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Tiền phòng', 'Điện nước', 'Tiền cọc'],
+                        datasets: [{
+                            data: [0, 0, 0],
+                            backgroundColor: ['#28a745', '#17a2b8', '#ffc107']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+
+            // Students by Faculty Chart
+            const facultyCtx = document.getElementById('studentsByFacultyChart')?.getContext('2d');
+            if (facultyCtx) {
+                window.studentsByFacultyChart = new Chart(facultyCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Số sinh viên',
+                            data: [],
+                            backgroundColor: '#667eea'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Registration Status Chart
+            const regStatusCtx = document.getElementById('registrationStatusChart')?.getContext('2d');
+            if (regStatusCtx) {
+                window.registrationStatusChart = new Chart(regStatusCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Chờ duyệt', 'Đã duyệt', 'Đang ở', 'Từ chối', 'Hoàn thành'],
+                        datasets: [{
+                            data: [0, 0, 0, 0, 0],
+                            backgroundColor: [
+                                '#ffc107', '#17a2b8', '#28a745', '#dc3545', '#6c757d'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+        }
+
+        // Load reports data
+        async function loadReportsData() {
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            
+            try {
+                const response = await fetch(`../../api/admin/stats.php?action=detailed&start_date=${startDate}&end_date=${endDate}`);
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const data = result.data;
+                    
+                    // Update summary cards
+                    updateSummaryCards(data);
+                    
+                    // Update charts
+                    updateCharts(data);
+                    
+                    // Update tables
+                    updateTables(data);
+                    
+                    // Update detailed stats
+                    updateDetailedStats(data);
+                } else {
+                    alert('Không thể tải dữ liệu báo cáo');
+                }
+            } catch (error) {
+                console.error('Error loading reports:', error);
+                alert('Lỗi khi tải dữ liệu báo cáo');
+            }
+        }
+
+        // Update summary cards
+        function updateSummaryCards(data) {
+            const cardsHtml = `
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-dollar-sign stat-icon mb-2"></i>
+                            <h3>${formatCurrency(data.revenue?.total_revenue || 0)}</h3>
+                            <p class="mb-0">Tổng doanh thu</p>
+                            <small class="text-white-50">${data.revenue?.total_payments || 0} thanh toán</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <div class="card-body text-center">
+                            <i class="fas fa-user-plus stat-icon mb-2"></i>
+                            <h3>${data.registrations?.total || 0}</h3>
+                            <p class="mb-0">Đăng ký phòng</p>
+                            <small class="text-white-50">${data.registrations?.active || 0} đang ở</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <div class="card-body text-center">
+                            <i class="fas fa-bolt stat-icon mb-2"></i>
+                            <h3>${formatCurrency(data.utilities?.total_cost || 0)}</h3>
+                            <p class="mb-0">Điện nước</p>
+                            <small class="text-white-50">${data.utilities?.unpaid_amount ? 'Còn nợ: ' + formatCurrency(data.utilities.unpaid_amount) : 'Đã thanh toán đủ'}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stat-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                        <div class="card-body text-center">
+                            <i class="fas fa-wrench stat-icon mb-2"></i>
+                            <h3>${data.maintenance?.total_requests || 0}</h3>
+                            <p class="mb-0">Yêu cầu bảo trì</p>
+                            <small class="text-white-50">${data.maintenance?.urgent || 0} khẩn cấp</small>
+                        </div>
                     </div>
                 </div>
             `;
+            
+            document.getElementById('reportSummaryCards').innerHTML = cardsHtml;
         }
+
+        // Update charts
+        function updateCharts(data) {
+            // Daily Revenue Chart
+            if (window.dailyRevenueChart && data.daily_revenue) {
+                window.dailyRevenueChart.data.labels = data.daily_revenue.map(r => formatDate(r.date));
+                window.dailyRevenueChart.data.datasets[0].data = data.daily_revenue.map(r => parseFloat(r.daily_revenue));
+                window.dailyRevenueChart.update();
+            }
+
+            // Revenue Type Chart
+            if (window.revenueTypeChart && data.revenue) {
+                window.revenueTypeChart.data.datasets[0].data = [
+                    parseFloat(data.revenue.room_revenue || 0),
+                    parseFloat(data.revenue.utility_revenue || 0),
+                    parseFloat(data.revenue.deposit_revenue || 0)
+                ];
+                window.revenueTypeChart.update();
+            }
+
+            // Students by Faculty Chart
+            if (window.studentsByFacultyChart && data.students_by_faculty) {
+                window.studentsByFacultyChart.data.labels = data.students_by_faculty.map(s => s.faculty);
+                window.studentsByFacultyChart.data.datasets[0].data = data.students_by_faculty.map(s => parseInt(s.student_count));
+                window.studentsByFacultyChart.update();
+            }
+
+            // Registration Status Chart
+            if (window.registrationStatusChart && data.registrations) {
+                window.registrationStatusChart.data.datasets[0].data = [
+                    parseInt(data.registrations.pending || 0),
+                    parseInt(data.registrations.approved || 0),
+                    parseInt(data.registrations.active || 0),
+                    parseInt(data.registrations.rejected || 0),
+                    parseInt(data.registrations.completed || 0)
+                ];
+                window.registrationStatusChart.update();
+            }
+        }
+
+        // Update tables
+        function updateTables(data) {
+            // Top Rooms Table
+            if (data.top_rooms && data.top_rooms.length > 0) {
+                const tbody = document.querySelector('#topRoomsTable tbody');
+                tbody.innerHTML = data.top_rooms.map((room, index) => `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td><strong>${room.room_number}</strong></td>
+                        <td>${room.building_name}</td>
+                        <td>${room.payment_count}</td>
+                        <td><strong>${formatCurrency(parseFloat(room.total_revenue))}</strong></td>
+                    </tr>
+                `).join('');
+            } else {
+                document.querySelector('#topRoomsTable tbody').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">Không có dữ liệu</td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Update detailed stats
+        function updateDetailedStats(data) {
+            const statsHtml = `
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Chi tiết doanh thu</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td>Tiền phòng:</td>
+                                    <td class="text-end"><strong>${formatCurrency(data.revenue?.room_revenue || 0)}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Điện nước:</td>
+                                    <td class="text-end"><strong>${formatCurrency(data.revenue?.utility_revenue || 0)}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Tiền cọc:</td>
+                                    <td class="text-end"><strong>${formatCurrency(data.revenue?.deposit_revenue || 0)}</strong></td>
+                                </tr>
+                                <tr class="table-primary">
+                                    <td><strong>Tổng cộng:</strong></td>
+                                    <td class="text-end"><strong>${formatCurrency(data.revenue?.total_revenue || 0)}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Trung bình/thanh toán:</td>
+                                    <td class="text-end">${formatCurrency(data.revenue?.avg_payment || 0)}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="fas fa-users me-2"></i>Thống kê sinh viên</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td>Tổng số sinh viên:</td>
+                                    <td class="text-end"><strong>${data.students?.total || 0}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Nam:</td>
+                                    <td class="text-end">${data.students?.male || 0}</td>
+                                </tr>
+                                <tr>
+                                    <td>Nữ:</td>
+                                    <td class="text-end">${data.students?.female || 0}</td>
+                                </tr>
+                                <tr>
+                                    <td>Số khoa:</td>
+                                    <td class="text-end">${data.students?.faculty_count || 0}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Điện nước</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td>Tổng chỉ số điện:</td>
+                                    <td class="text-end"><strong>${formatNumber(data.utilities?.total_electricity || 0)} kWh</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Tổng chỉ số nước:</td>
+                                    <td class="text-end"><strong>${formatNumber(data.utilities?.total_water || 0)} m³</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Tổng chi phí:</td>
+                                    <td class="text-end"><strong>${formatCurrency(data.utilities?.total_cost || 0)}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>Đã thanh toán:</td>
+                                    <td class="text-end text-success">${formatCurrency(data.utilities?.paid_amount || 0)}</td>
+                                </tr>
+                                <tr>
+                                    <td>Chưa thanh toán:</td>
+                                    <td class="text-end text-danger">${formatCurrency(data.utilities?.unpaid_amount || 0)}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0"><i class="fas fa-comments me-2"></i>Phản hồi & Bảo trì</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td>Yêu cầu bảo trì:</td>
+                                    <td class="text-end"><strong>${data.maintenance?.total_requests || 0}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>&nbsp;&nbsp;- Đang chờ:</td>
+                                    <td class="text-end">${data.maintenance?.pending || 0}</td>
+                                </tr>
+                                <tr>
+                                    <td>&nbsp;&nbsp;- Khẩn cấp:</td>
+                                    <td class="text-end text-danger">${data.maintenance?.urgent || 0}</td>
+                                </tr>
+                                <tr>
+                                    <td>Phản hồi:</td>
+                                    <td class="text-end"><strong>${data.feedback?.total || 0}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>&nbsp;&nbsp;- Chưa xử lý:</td>
+                                    <td class="text-end text-warning">${data.feedback?.new || 0}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('detailedStatsSection').innerHTML = statsHtml;
+        }
+
+        // Format number
+        function formatNumber(num) {
+            return new Intl.NumberFormat('vi-VN').format(num);
+        }
+
+        // Export report to Excel (placeholder)
+        function exportReport() {
+            alert('Tính năng xuất Excel đang được phát triển. Vui lòng sử dụng chức năng in để lưu PDF.');
+        }
+
+        // Print report
+        function printReport() {
+            window.print();
+        }
+
+        // Handle period change
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.id === 'reportPeriod') {
+                const period = e.target.value;
+                const today = new Date();
+                let startDate, endDate;
+                
+                switch (period) {
+                    case 'this_month':
+                        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                        endDate = today;
+                        break;
+                    case 'last_month':
+                        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+                        break;
+                    case 'this_year':
+                        startDate = new Date(today.getFullYear(), 0, 1);
+                        endDate = today;
+                        break;
+                    case 'last_year':
+                        startDate = new Date(today.getFullYear() - 1, 0, 1);
+                        endDate = new Date(today.getFullYear() - 1, 11, 31);
+                        break;
+                    case 'last_3_months':
+                        startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+                        endDate = today;
+                        break;
+                    case 'last_6_months':
+                        startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+                        endDate = today;
+                        break;
+                    default:
+                        return; // Custom, don't change dates
+                }
+                
+                document.getElementById('reportStartDate').value = startDate.toISOString().split('T')[0];
+                document.getElementById('reportEndDate').value = endDate.toISOString().split('T')[0];
+                
+                // Auto load data if not custom
+                if (period !== 'custom') {
+                    loadReportsData();
+                }
+            }
+        });
 
         function formatDate(dateString) {
             if (!dateString) return 'N/A';

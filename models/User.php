@@ -1,6 +1,7 @@
 <?php
-require_once '../config/database.php';
-require_once '../config/logger.php';
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 class User {
     private $conn;
@@ -222,6 +223,131 @@ class User {
         } catch (Exception $e) {
             $this->logger->error("Count users error", ['error' => $e->getMessage()]);
             return 0;
+        }
+    }
+    
+    // Xóa user
+    public function deleteUser($userId) {
+        try {
+            $query = "DELETE FROM users WHERE id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':id', $userId);
+            
+            if ($stmt->execute()) {
+                $this->logger->info("User deleted successfully", ['user_id' => $userId]);
+                return true;
+            }
+            
+            return false;
+        } catch (Exception $e) {
+            $this->logger->error("Delete user error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
+    // Toggle trạng thái active
+    public function toggleUserStatus($userId) {
+        try {
+            $query = "UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':id', $userId);
+            
+            if ($stmt->execute()) {
+                $this->logger->info("User status toggled", ['user_id' => $userId]);
+                return true;
+            }
+            
+            return false;
+        } catch (Exception $e) {
+            $this->logger->error("Toggle user status error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
+    // Reset password (admin function)
+    public function resetUserPassword($userId, $newPassword) {
+        try {
+            $hashedPassword = password_hash($newPassword, PASSWORD_HASH_ALGO);
+            
+            $query = "UPDATE users SET password = :password, updated_at = NOW() WHERE id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':password', $hashedPassword);
+            $stmt->bindParam(':id', $userId);
+            
+            if ($stmt->execute()) {
+                $this->logger->info("Password reset by admin", ['user_id' => $userId]);
+                return true;
+            }
+            
+            return false;
+        } catch (Exception $e) {
+            $this->logger->error("Reset password error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
+    // Kiểm tra username đã tồn tại
+    public function usernameExists($username, $excludeUserId = null) {
+        try {
+            $query = "SELECT id FROM users WHERE username = :username";
+            if ($excludeUserId) {
+                $query .= " AND id != :exclude_id";
+            }
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':username', $username);
+            if ($excludeUserId) {
+                $stmt->bindParam(':exclude_id', $excludeUserId);
+            }
+            
+            $stmt->execute();
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            $this->logger->error("Check username exists error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
+    // Kiểm tra email đã tồn tại
+    public function emailExists($email, $excludeUserId = null) {
+        try {
+            $query = "SELECT id FROM users WHERE email = :email";
+            if ($excludeUserId) {
+                $query .= " AND id != :exclude_id";
+            }
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':email', $email);
+            if ($excludeUserId) {
+                $stmt->bindParam(':exclude_id', $excludeUserId);
+            }
+            
+            $stmt->execute();
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            $this->logger->error("Check email exists error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
+    // Lấy thống kê users theo role
+    public function getUserStatsByRole() {
+        try {
+            $query = "SELECT 
+                        role,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
+                        SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive
+                     FROM users
+                     GROUP BY role";
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute();
+            
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            $this->logger->error("Get user stats error", ['error' => $e->getMessage()]);
+            return false;
         }
     }
 }

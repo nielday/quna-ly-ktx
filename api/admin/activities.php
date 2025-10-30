@@ -3,6 +3,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
+require_once dirname(__FILE__) . '/../../config/config.php';
 require_once dirname(__FILE__) . '/../../config/database.php';
 require_once dirname(__FILE__) . '/../../config/logger.php';
 

@@ -1545,38 +1545,257 @@
         function showPaymentModal(paymentId, amount) {
             const modal = `
                 <div class="modal fade" id="paymentModal" tabindex="-1">
-                    <div class="modal-dialog">
+                    <div class="modal-dialog modal-lg">
                         <div class="modal-content">
                             <div class="modal-header bg-success text-white">
-                                <h5 class="modal-title"><i class="fas fa-credit-card me-2"></i>Thanh toán hóa đơn</h5>
+                                <h5 class="modal-title"><i class="fas fa-credit-card me-2"></i>Thanh toán hóa đơn #${paymentId}</h5>
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">
-                        <div class="alert alert-info">
+                                <!-- Số tiền cần thanh toán -->
+                                <div class="alert alert-info text-center mb-4">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Số tiền cần thanh toán: <strong class="fs-5 text-danger">${formatCurrency(amount)}</strong>
-                        </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Phương thức thanh toán:</label>
-                                    <select class="form-select" id="paymentMethod">
-                                        <option value="cash">Tiền mặt</option>
-                                        <option value="bank_transfer">Chuyển khoản</option>
-                                        <option value="card">Thẻ</option>
+                                    <div class="mt-2">
+                                        <small class="d-block">Số tiền cần thanh toán:</small>
+                                        <strong class="fs-3 text-danger">${formatCurrency(amount)}</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Phương thức thanh toán -->
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-wallet me-2"></i>Chọn phương thức thanh toán:
+                                    </label>
+                                    <select class="form-select form-select-lg" id="paymentMethod" onchange="togglePaymentInfo()">
+                                        <option value="">-- Chọn phương thức --</option>
+                                        <option value="bank_transfer">💳 Chuyển khoản ngân hàng</option>
+                                        <option value="cash">💵 Tiền mặt tại văn phòng</option>
+                                        <option value="card">💳 Thẻ ATM/Visa</option>
                                     </select>
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Mã giao dịch (nếu có):</label>
-                                    <input type="text" class="form-control" id="referenceNumber" placeholder="VD: 123456789">
+
+                                <!-- Hướng dẫn chuyển khoản -->
+                                <div id="bankTransferInfo" class="payment-info" style="display: none;">
+                                    <div class="card border-primary mb-3">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0"><i class="fas fa-university me-2"></i>Thông tin chuyển khoản</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-md-6 text-center mb-3">
+                                                    <img src="../../image/Screenshot 2025-10-28 143029.png" 
+                                                         alt="QR Code" 
+                                                         class="img-fluid rounded shadow-sm"
+                                                         style="max-width: 280px; border: 2px solid #dee2e6;">
+                                                    <p class="mt-2 mb-0 text-muted">
+                                                        <small><i class="fas fa-qrcode me-1"></i>Quét mã QR để thanh toán</small>
+                                                    </p>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="bank-info-details">
+                                                        <div class="info-item mb-3">
+                                                            <label class="text-muted small d-block mb-1">Ngân hàng:</label>
+                                                            <div class="d-flex align-items-center">
+                                                                <strong class="fs-5 text-danger">TECHCOMBANK</strong>
+                                                            </div>
+                                                        </div>
+                                                        <div class="info-item mb-3">
+                                                            <label class="text-muted small d-block mb-1">Số tài khoản:</label>
+                                                            <div class="input-group">
+                                                                <input type="text" 
+                                                                       class="form-control fw-bold" 
+                                                                       value="8808 1351 6686" 
+                                                                       id="accountNumber" 
+                                                                       readonly>
+                                                                <button class="btn btn-outline-secondary" 
+                                                                        type="button" 
+                                                                        onclick="copyToClipboard('accountNumber', 'Số tài khoản')">
+                                                                    <i class="fas fa-copy"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="info-item mb-3">
+                                                            <label class="text-muted small d-block mb-1">Chủ tài khoản:</label>
+                                                            <strong class="d-block">DAO DUC PHONG</strong>
+                                                        </div>
+                                                        <div class="info-item mb-3">
+                                                            <label class="text-muted small d-block mb-1">Số tiền:</label>
+                                                            <div class="input-group">
+                                                                <input type="text" 
+                                                                       class="form-control fw-bold text-danger" 
+                                                                       value="${amount}" 
+                                                                       id="amountToPay" 
+                                                                       readonly>
+                                                                <button class="btn btn-outline-secondary" 
+                                                                        type="button" 
+                                                                        onclick="copyToClipboard('amountToPay', 'Số tiền')">
+                                                                    <i class="fas fa-copy"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="info-item">
+                                                            <label class="text-muted small d-block mb-1">Nội dung chuyển khoản:</label>
+                                                            <div class="input-group">
+                                                                <input type="text" 
+                                                                       class="form-control fw-bold text-primary" 
+                                                                       value="KTXHD${paymentId} HoTen MSV" 
+                                                                       id="transferContent" 
+                                                                       readonly>
+                                                                <button class="btn btn-outline-secondary" 
+                                                                        type="button" 
+                                                                        onclick="copyToClipboard('transferContent', 'Nội dung')">
+                                                                    <i class="fas fa-copy"></i>
+                                                                </button>
+                                                            </div>
+                                                            <small class="text-danger">
+                                                                <i class="fas fa-exclamation-circle me-1"></i>
+                                                                Thay "HoTen" và "MSV" bằng họ tên và mã sinh viên của bạn
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Hướng dẫn bước -->
+                                            <div class="alert alert-light mt-3">
+                                                <h6 class="fw-bold mb-3">
+                                                    <i class="fas fa-list-ol me-2 text-primary"></i>Hướng dẫn thanh toán:
+                                                </h6>
+                                                <ol class="mb-0 ps-3">
+                                                    <li class="mb-2">
+                                                        <strong>Quét mã QR</strong> bằng app ngân hàng hoặc ví điện tử 
+                                                        (VietQR, Napas 247, MoMo, ZaloPay...)
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Hoặc chuyển khoản thủ công với thông tin bên trên
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        <strong>Nhập đúng nội dung chuyển khoản</strong> để hệ thống tự động xác nhận
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Sau khi chuyển khoản, nhập <strong>mã giao dịch</strong> bên dưới
+                                                    </li>
+                                                    <li class="mb-0">
+                                                        Nhấn <strong>"Xác nhận thanh toán"</strong> để hoàn tất
+                                                    </li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <!-- Hướng dẫn tiền mặt -->
+                                <div id="cashInfo" class="payment-info" style="display: none;">
+                                    <div class="card border-success mb-3">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0"><i class="fas fa-money-bill me-2"></i>Thanh toán tiền mặt</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="alert alert-light">
+                                                <h6 class="fw-bold mb-3">
+                                                    <i class="fas fa-list-check me-2 text-success"></i>Hướng dẫn:
+                                                </h6>
+                                                <ol class="mb-0 ps-3">
+                                                    <li class="mb-2">
+                                                        Mang theo <strong>thẻ sinh viên</strong> và số tiền <strong class="text-danger">${formatCurrency(amount)}</strong>
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Đến <strong>Văn phòng Quản lý Ký túc xá</strong> trong giờ làm việc
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        <strong>Giờ làm việc:</strong>
+                                                        <ul class="mt-1">
+                                                            <li>Sáng: 8h00 - 11h30</li>
+                                                            <li>Chiều: 13h30 - 17h00 (Thứ 2 - Thứ 6)</li>
+                                                        </ul>
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Xuất trình mã hóa đơn: <strong class="text-primary">#${paymentId}</strong>
+                                                    </li>
+                                                    <li class="mb-0">
+                                                        Nhận biên lai xác nhận thanh toán từ cán bộ
+                                                    </li>
+                                                </ol>
+                                            </div>
+                                            <div class="alert alert-warning mt-3">
+                                                <i class="fas fa-map-marker-alt me-2"></i>
+                                                <strong>Địa chỉ:</strong> Tầng 1, Tòa A, Ký túc xá sinh viên
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Hướng dẫn thẻ -->
+                                <div id="cardInfo" class="payment-info" style="display: none;">
+                                    <div class="card border-info mb-3">
+                                        <div class="card-header bg-info text-white">
+                                            <h6 class="mb-0"><i class="fas fa-credit-card me-2"></i>Thanh toán bằng thẻ</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="alert alert-light">
+                                                <h6 class="fw-bold mb-3">
+                                                    <i class="fas fa-list-check me-2 text-info"></i>Hướng dẫn:
+                                                </h6>
+                                                <ol class="mb-0 ps-3">
+                                                    <li class="mb-2">
+                                                        Mang theo <strong>thẻ ATM/Visa/Mastercard</strong>
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Đến <strong>Văn phòng Quản lý Ký túc xá</strong> để sử dụng máy POS
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        <strong>Giờ làm việc:</strong> 8h00 - 17h00 (Thứ 2 - Thứ 6)
+                                                    </li>
+                                                    <li class="mb-2">
+                                                        Xuất trình mã hóa đơn: <strong class="text-primary">#${paymentId}</strong>
+                                                    </li>
+                                                    <li class="mb-0">
+                                                        Cán bộ sẽ hỗ trợ thanh toán qua máy POS
+                                                    </li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Mã giao dịch -->
+                                <div class="mb-3" id="referenceNumberGroup" style="display: none;">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-hashtag me-2"></i>Mã giao dịch (bắt buộc nếu chuyển khoản):
+                                    </label>
+                                    <input type="text" 
+                                           class="form-control form-control-lg" 
+                                           id="referenceNumber" 
+                                           placeholder="VD: 123456789 hoặc FT21365XXXXX">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Kiểm tra trong lịch sử giao dịch của app ngân hàng
+                                    </small>
+                                </div>
+
+                                <!-- Lưu ý -->
                                 <div class="alert alert-warning">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>
-                                    <small>Đây là chức năng demo. Trong thực tế sẽ tích hợp cổng thanh toán.</small>
+                                    <h6 class="fw-bold mb-2">
+                                        <i class="fas fa-exclamation-triangle me-2"></i>Lưu ý quan trọng:
+                                    </h6>
+                                    <ul class="mb-0 ps-3">
+                                        <li>Kiểm tra kỹ thông tin trước khi chuyển khoản</li>
+                                        <li>Giữ lại biên lai/ảnh chụp giao dịch để đối chiếu nếu cần</li>
+                                        <li>Hóa đơn sẽ tự động cập nhật sau khi cán bộ xác nhận thanh toán</li>
+                                        <li>Liên hệ văn phòng nếu có vấn đề: <strong>0813516686</strong></li>
+                                    </ul>
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                                <button type="button" class="btn btn-success" onclick="executePayment(${paymentId})">
-                                    <i class="fas fa-check me-2"></i>Xác nhận thanh toán
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                    <i class="fas fa-times me-2"></i>Đóng
+                                </button>
+                                <button type="button" 
+                                        class="btn btn-success btn-lg" 
+                                        id="confirmPaymentBtn"
+                                        onclick="executePayment(${paymentId})"
+                                        disabled>
+                                    <i class="fas fa-check me-2"></i>Xác nhận đã thanh toán
                                 </button>
                             </div>
                         </div>
@@ -1592,6 +1811,70 @@
             document.body.insertAdjacentHTML('beforeend', modal);
             const modalElement = new bootstrap.Modal(document.getElementById('paymentModal'));
             modalElement.show();
+        }
+        
+        // Hàm toggle hiển thị thông tin thanh toán
+        function togglePaymentInfo() {
+            const method = document.getElementById('paymentMethod').value;
+            const bankInfo = document.getElementById('bankTransferInfo');
+            const cashInfo = document.getElementById('cashInfo');
+            const cardInfo = document.getElementById('cardInfo');
+            const refGroup = document.getElementById('referenceNumberGroup');
+            const confirmBtn = document.getElementById('confirmPaymentBtn');
+            
+            // Ẩn tất cả
+            bankInfo.style.display = 'none';
+            cashInfo.style.display = 'none';
+            cardInfo.style.display = 'none';
+            refGroup.style.display = 'none';
+            
+            // Hiển thị theo method
+            if (method === 'bank_transfer') {
+                bankInfo.style.display = 'block';
+                refGroup.style.display = 'block';
+                confirmBtn.disabled = false;
+            } else if (method === 'cash') {
+                cashInfo.style.display = 'block';
+                confirmBtn.disabled = false;
+            } else if (method === 'card') {
+                cardInfo.style.display = 'block';
+                confirmBtn.disabled = false;
+            } else {
+                confirmBtn.disabled = true;
+            }
+        }
+        
+        // Hàm copy to clipboard
+        function copyToClipboard(elementId, label) {
+            const element = document.getElementById(elementId);
+            element.select();
+            element.setSelectionRange(0, 99999);
+            
+            navigator.clipboard.writeText(element.value).then(() => {
+                // Tạo toast notification
+                const toast = document.createElement('div');
+                toast.className = 'position-fixed top-0 end-0 p-3';
+                toast.style.zIndex = '9999';
+                toast.innerHTML = `
+                    <div class="toast show" role="alert">
+                        <div class="toast-header bg-success text-white">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong class="me-auto">Thành công</strong>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                        </div>
+                        <div class="toast-body">
+                            Đã sao chép ${label}!
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.remove();
+                }, 3000);
+            }).catch(err => {
+                alert('Không thể sao chép. Vui lòng copy thủ công.');
+            });
         }
         
         async function executePayment(paymentId) {
@@ -2486,20 +2769,36 @@
                                 <h6 class="text-primary mb-3"><i class="fas fa-id-card me-2"></i>Thông tin sinh viên</h6>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label class="form-label">Mã số sinh viên</label>
-                                        <input type="text" class="form-control" value="${student.student_code || ''}" disabled>
-                                        <small class="text-muted">Mã SV không thể thay đổi</small>
+                                        <label class="form-label">Mã số sinh viên ${!student.student_code || student.student_code.startsWith('TEMP_') ? '*' : ''}</label>
+                                        <input type="text" class="form-control" id="studentCode" 
+                                               value="${student.student_code && !student.student_code.startsWith('TEMP_') ? student.student_code : ''}" 
+                                               ${student.student_code && !student.student_code.startsWith('TEMP_') ? 'disabled' : 'required'}
+                                               placeholder="${student.student_code && student.student_code.startsWith('TEMP_') ? 'Nhập mã sinh viên thực' : ''}">
+                                        <small class="text-muted">${student.student_code && !student.student_code.startsWith('TEMP_') ? 'Mã SV không thể thay đổi' : '⚠️ Vui lòng nhập mã SV thực, không thể thay đổi sau khi lưu!'}</small>
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label class="form-label">Giới tính</label>
-                                        <input type="text" class="form-control" value="${student.gender === 'male' ? 'Nam' : 'Nữ'}" disabled>
+                                        <label class="form-label">Giới tính ${student.faculty === 'Chưa xác định' || !student.gender ? '*' : ''}</label>
+                                        ${student.faculty !== 'Chưa xác định' && student.gender ? 
+                                            `<input type="text" class="form-control" value="${student.gender === 'male' ? 'Nam' : 'Nữ'}" disabled>
+                                             <small class="text-muted">Giới tính không thể thay đổi</small>` 
+                                            : 
+                                            `<select class="form-select" id="gender" required>
+                                                <option value="">-- Chọn giới tính --</option>
+                                                <option value="male" ${student.gender === 'male' ? 'selected' : ''}>Nam</option>
+                                                <option value="female" ${student.gender === 'female' ? 'selected' : ''}>Nữ</option>
+                                             </select>
+                                             <small class="text-warning">⚠️ Chọn đúng giới tính, không thể thay đổi sau khi lưu!</small>`
+                                        }
                                     </div>
                                 </div>
                                 
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Khoa *</label>
-                                        <input type="text" class="form-control" id="faculty" value="${student.faculty || ''}" required>
+                                        <input type="text" class="form-control" id="faculty" 
+                                               value="${student.faculty && student.faculty !== 'Chưa xác định' ? student.faculty : ''}" 
+                                               placeholder="${student.faculty === 'Chưa xác định' ? 'Nhập tên khoa' : ''}" 
+                                               required>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Lớp</label>
@@ -2560,6 +2859,16 @@
                         emergency_phone: document.getElementById('emergencyPhone').value,
                         id_card: document.getElementById('idCard').value
                     };
+                    
+                    // Thêm student_code và gender nếu có thể chỉnh sửa (lần đầu)
+                    const studentCodeField = document.getElementById('studentCode');
+                    const genderField = document.getElementById('gender');
+                    if (studentCodeField && !studentCodeField.disabled) {
+                        profileData.student_code = studentCodeField.value;
+                    }
+                    if (genderField && !genderField.disabled) {
+                        profileData.gender = genderField.value;
+                    }
                     
                     try {
                         const updateResponse = await fetch('../../api/profile.php?action=update', {

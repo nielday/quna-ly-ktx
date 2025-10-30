@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/logger.php';
 require_once '../models/User.php';
@@ -118,6 +119,24 @@ function updateProfile() {
             $student = $studentModel->getStudentByUserId($_SESSION['user_id']);
             if ($student) {
                 $studentData = [];
+                
+                // Cho phép cập nhật student_code và gender CHỈ KHI chưa có hoặc là giá trị tạm
+                // Kiểm tra xem có phải tài khoản mới tạo chưa điền thông tin không
+                $isNewAccount = (strpos($student['student_code'], 'TEMP_') === 0) || 
+                                ($student['faculty'] === 'Chưa xác định');
+                
+                // Student code: cho phép sửa nếu empty HOẶC bắt đầu bằng "TEMP_" (do admin tạo)
+                if (isset($input['student_code']) && 
+                    (empty($student['student_code']) || strpos($student['student_code'], 'TEMP_') === 0)) {
+                    $studentData['student_code'] = $input['student_code'];
+                }
+                
+                // Gender: cho phép sửa NẾU là tài khoản mới (faculty = "Chưa xác định")
+                if (isset($input['gender']) && $isNewAccount) {
+                    $studentData['gender'] = $input['gender'];
+                }
+                
+                // Các trường khác luôn được phép cập nhật
                 if (isset($input['faculty'])) $studentData['faculty'] = $input['faculty'];
                 if (isset($input['class_name'])) $studentData['class_name'] = $input['class_name'];
                 if (isset($input['date_of_birth'])) $studentData['date_of_birth'] = $input['date_of_birth'];
