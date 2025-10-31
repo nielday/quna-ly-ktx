@@ -63,6 +63,7 @@ class Payment {
     }
     
     // Đánh dấu điện nước đã thanh toán
+    // Chỉ đánh dấu record tổng hợp (ngày cuối tháng), không đánh dấu records ngày
     private function markUtilityAsPaid($roomRegistrationId, $paymentDate) {
         try {
             // Lấy room_id từ registration
@@ -73,7 +74,7 @@ class Payment {
             $registration = $stmt->fetch();
             
             if ($registration) {
-                // Chỉ update reading của tháng cụ thể (dựa vào payment_date)
+                // Chỉ update record tổng hợp của tháng cụ thể (ngày cuối tháng)
                 // Format: YYYY-MM (tháng và năm)
                 $monthYear = date('Y-m', strtotime($paymentDate));
                 
@@ -81,6 +82,7 @@ class Payment {
                                SET is_paid = TRUE, updated_at = NOW() 
                                WHERE room_id = :room_id 
                                AND DATE_FORMAT(reading_date, '%Y-%m') = :month_year
+                               AND reading_date = LAST_DAY(reading_date)
                                AND is_paid = FALSE";
                 $updateStmt = $this->conn->prepare($updateQuery);
                 $updateStmt->bindParam(':room_id', $registration['room_id']);
@@ -218,15 +220,32 @@ class Payment {
     }
     
     // Lấy tất cả thanh toán
-    public function getAllPayments($limit = 50, $offset = 0) {
+    public function getAllPayments($limit = 50, $offset = 0, $status = null) {
         try {
-            $query = "SELECT p.*, s.student_code, u.full_name as student_name
+            $whereClause = "";
+            $params = [];
+            
+            if ($status) {
+                $whereClause = "WHERE p.status = :status";
+                $params[':status'] = $status;
+            }
+            
+            $query = "SELECT p.*, s.student_code, u.full_name as student_name,
+                     r.room_number, b.name as building_name
                      FROM payments p
                      LEFT JOIN students s ON p.student_id = s.id
                      LEFT JOIN users u ON s.user_id = u.id
+                     LEFT JOIN room_registrations rr ON p.room_registration_id = rr.id
+                     LEFT JOIN rooms r ON rr.room_id = r.id
+                     LEFT JOIN buildings b ON r.building_id = b.id
+                     $whereClause
                      ORDER BY p.payment_date DESC, p.created_at DESC
                      LIMIT :limit OFFSET :offset";
             $stmt = $this->conn->prepare($query);
+            
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
             $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $stmt->execute();
