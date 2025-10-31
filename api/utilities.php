@@ -149,10 +149,13 @@ try {
                 try {
                     $result = $controller->createInvoiceForReading($input['reading_id']);
                     
-                    if ($result) {
+                    if ($result && isset($result['success'])) {
                         echo json_encode([
                             'success' => true,
-                            'message' => 'Đã tạo hóa đơn thành công!'
+                            'message' => 'Đã tạo hóa đơn thành công!',
+                            'warning' => $result['warning'] ?? null,
+                            'monthly_total' => $result['monthly_total'] ?? null,
+                            'completeness' => $result['completeness'] ?? null
                         ]);
                     } else {
                         http_response_code(400);
@@ -172,6 +175,11 @@ try {
                     $limit = $_GET['limit'] ?? 12;
                     $history = $controller->getReadingHistory($roomId, $limit);
                     echo json_encode(['success' => true, 'data' => $history]);
+                } elseif ($action === 'grouped-by-month') {
+                    // Lấy records nhóm theo tháng (cho sinh viên xem chi tiết)
+                    $limitMonths = $_GET['limit_months'] ?? 12;
+                    $grouped = $controller->getReadingsGroupedByMonth($roomId, $limitMonths);
+                    echo json_encode(['success' => true, 'data' => $grouped]);
                 } elseif ($action === 'last') {
                     $last = $controller->getLastReading($roomId);
                     echo json_encode(['success' => true, 'data' => $last]);
@@ -183,7 +191,20 @@ try {
                 // Get all utility readings
                 $limit = $_GET['limit'] ?? 50;
                 $offset = $_GET['offset'] ?? 0;
-                $readings = $controller->getAllReadings($limit, $offset);
+                
+                // Filter by is_paid status
+                if (isset($_GET['is_paid'])) {
+                    if ($_GET['is_paid'] === 'false' || $_GET['is_paid'] === '0') {
+                        // Lấy hóa đơn chưa thanh toán
+                        $readings = $controller->getUnpaidReadings($limit, $offset);
+                    } else {
+                        $isPaid = ($_GET['is_paid'] === 'true' || $_GET['is_paid'] === '1') ? true : null;
+                        $readings = $controller->getAllReadings($limit, $offset, $isPaid);
+                    }
+                } else {
+                    $readings = $controller->getAllReadings($limit, $offset);
+                }
+                
                 echo json_encode(['success' => true, 'data' => $readings]);
             }
             break;
