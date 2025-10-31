@@ -328,12 +328,39 @@
         // Load các số liệu thống kê dashboard
         async function loadDashboardStats() {
             try {
-                // Load số hóa đơn chưa thanh toán
-                const paymentsResponse = await fetch('../../api/payments.php?my=true&status=pending');
-                const paymentsData = await paymentsResponse.json();
-                if (paymentsData.success && paymentsData.data) {
-                    document.getElementById('pendingInvoices').textContent = paymentsData.data.length;
-                } else {
+                // Load số hóa đơn chưa thanh toán (bao gồm cả utility bills)
+                try {
+                    const paymentsResponse = await fetch('../../api/payments.php?my=true&status=pending');
+                    const paymentsData = await paymentsResponse.json();
+                    
+                    let pendingCount = 0;
+                    if (paymentsData.success && paymentsData.data) {
+                        pendingCount = paymentsData.data.length;
+                    }
+                    
+                    // Đếm utility bills chưa thanh toán
+                    const regResponse = await fetch('../../api/registrations.php?my=true');
+                    const regData = await regResponse.json();
+                    
+                    if (regData.success && regData.data && regData.data.length > 0) {
+                        const activeRegistration = regData.data.find(reg => 
+                            reg.status === 'active' || reg.status === 'approved' || reg.status === 'checked_in'
+                        );
+                        
+                        if (activeRegistration && activeRegistration.room_id) {
+                            const utilityResponse = await fetch(`../../api/utilities.php?room_id=${activeRegistration.room_id}&action=history&limit=50`);
+                            const utilityData = await utilityResponse.json();
+                            
+                            if (utilityData.success && utilityData.data) {
+                                const unpaidUtilities = utilityData.data.filter(r => !r.is_paid);
+                                pendingCount += unpaidUtilities.length;
+                            }
+                        }
+                    }
+                    
+                    document.getElementById('pendingInvoices').textContent = pendingCount;
+                } catch (error) {
+                    console.error('Error loading pending invoices count:', error);
                     document.getElementById('pendingInvoices').textContent = '0';
                 }
                 
@@ -570,7 +597,7 @@
                                     <strong>Tòa nhà:</strong> ${activeRegistration.building_name}
                                 </div>
                                 <div class="info-item mb-2">
-                                    <strong>Số người ở:</strong> ${activeRegistration.current_occupancy}/${activeRegistration.capacity} người
+                                    <strong>Số người ở:</strong> ${parseInt(activeRegistration.current_occupancy || 0)}/${parseInt(activeRegistration.capacity || 0)} người
                                 </div>
                                 <div class="info-item mb-2">
                                     <strong>Giá phòng:</strong> <span class="text-danger fw-bold">${formatCurrency(activeRegistration.monthly_fee)}/tháng</span>
@@ -590,19 +617,67 @@
                             </div>
                         `;
                     } else {
-                        // Có đăng ký nhưng chưa được duyệt - Clear room ID
+                        // Có đăng ký nhưng chưa được duyệt hoặc bị từ chối - Clear room ID
                         window.currentRoomId = null;
                         window.currentBuildingId = null;
                         
+                        // Phân loại đăng ký theo trạng thái
+                        const pendingRegs = data.data.filter(reg => reg.status === 'pending');
+                        const rejectedRegs = data.data.filter(reg => reg.status === 'rejected');
+                        const otherRegs = data.data.filter(reg => 
+                            reg.status !== 'pending' && reg.status !== 'rejected' && 
+                            reg.status !== 'active' && reg.status !== 'approved'
+                        );
+                        
+                        let alertHtml = '';
+                        if (rejectedRegs.length > 0) {
+                            // Có đăng ký bị từ chối
+                            alertHtml = `
+                                <div class="alert alert-danger mb-3">
+                                    <i class="fas fa-times-circle me-2"></i>
+                                    <strong>Đăng ký đã bị từ chối:</strong>
+                                    <ul class="mb-0 mt-2">
+                                        ${rejectedRegs.map(reg => `
+                                            <li>
+                                                Phòng <strong>${reg.room_number}</strong> - ${reg.building_name}
+                                                ${reg.notes ? `<br><small class="text-muted">Lý do: ${reg.notes}</small>` : ''}
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            `;
+                        }
+                        
+                        if (pendingRegs.length > 0) {
+                            // Có đăng ký đang chờ duyệt
+                            alertHtml += `
+                                <div class="alert alert-warning mb-3">
+                                    <i class="fas fa-clock me-2"></i>
+                                    <strong>Đang chờ duyệt:</strong>
+                                    ${pendingRegs.map(reg => `Phòng ${reg.room_number} - ${reg.building_name}`).join(', ')}
+                                </div>
+                            `;
+                        }
+                        
+                        if (otherRegs.length > 0) {
+                            // Các trạng thái khác
+                            alertHtml += `
+                                <div class="alert alert-info mb-3">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>Các đăng ký khác:</strong>
+                                    ${otherRegs.map(reg => `
+                                        Phòng ${reg.room_number} - ${reg.building_name} 
+                                        <span class="badge bg-secondary">${reg.status}</span>
+                                    `).join(', ')}
+                                </div>
+                            `;
+                        }
+                        
                         roomInfoContainer.innerHTML = `
                             <div class="col-md-12">
-                                <div class="alert alert-warning">
-                                    <i class="fas fa-clock me-2"></i>
-                                    <strong>Đang chờ duyệt:</strong> 
-                                    ${data.data.map(reg => `Phòng ${reg.room_number} - ${reg.building_name}`).join(', ')}
-                                </div>
+                                ${alertHtml}
                                 <button class="btn btn-primary" onclick="loadSection('registration')">
-                                    <i class="fas fa-clipboard-list me-2"></i>Xem đăng ký của tôi
+                                    <i class="fas fa-clipboard-list me-2"></i>Xem chi tiết đăng ký
                                 </button>
                             </div>
                         `;
@@ -715,27 +790,39 @@
                     );
                     
                     if (activeRegistration) {
+                        // Parse các giá trị số để đảm bảo hiển thị đúng
+                        const occupancy = parseInt(activeRegistration.current_occupancy || 0);
+                        const capacity = parseInt(activeRegistration.capacity || 0);
+                        
+                        console.log('Room data:', {
+                            room_number: activeRegistration.room_number,
+                            current_occupancy: activeRegistration.current_occupancy,
+                            capacity: activeRegistration.capacity,
+                            parsed_occupancy: occupancy,
+                            parsed_capacity: capacity
+                        });
+                        
                         container.innerHTML = `
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <h6 class="text-primary"><i class="fas fa-bed me-2"></i>Thông tin phòng</h6>
                                     <div class="info-item mb-2">
-                                        <strong>Số phòng:</strong> ${activeRegistration.room_number}
+                                        <strong>Số phòng:</strong> ${activeRegistration.room_number || 'N/A'}
                                     </div>
                                     <div class="info-item mb-2">
-                                        <strong>Tòa nhà:</strong> ${activeRegistration.building_name}
+                                        <strong>Tòa nhà:</strong> ${activeRegistration.building_name || 'N/A'}
                                     </div>
                                     <div class="info-item mb-2">
                                         <strong>Loại phòng:</strong> ${activeRegistration.room_type || 'Standard'}
                                     </div>
                                     <div class="info-item mb-2">
-                                        <strong>Sức chứa:</strong> ${activeRegistration.capacity} người
+                                        <strong>Sức chứa:</strong> ${capacity} người
                                     </div>
                                     <div class="info-item mb-2">
-                                        <strong>Số người đang ở:</strong> ${activeRegistration.current_occupancy}/${activeRegistration.capacity} người
+                                        <strong>Số người đang ở:</strong> <span class="text-primary fw-bold">${occupancy}/${capacity}</span> người
                                     </div>
                                     <div class="info-item mb-2">
-                                        <strong>Giá phòng:</strong> <span class="text-danger fw-bold">${formatCurrency(activeRegistration.monthly_fee)}/tháng</span>
+                                        <strong>Giá phòng:</strong> <span class="text-danger fw-bold">${formatCurrency(activeRegistration.monthly_fee || 0)}/tháng</span>
                                     </div>
                                     <div class="info-item mb-2">
                                         <strong>Trạng thái:</strong> 
@@ -761,23 +848,74 @@
                                     <p class="mb-0 mt-2">${activeRegistration.notes}</p>
                                 </div>
                             ` : ''}
-                        `;
-                    } else {
-                        // Có đăng ký nhưng chưa được duyệt
-                        container.innerHTML = `
-                            <div class="alert alert-warning">
-                                <h6><i class="fas fa-clock me-2"></i>Đang chờ duyệt</h6>
-                                <p>Đăng ký của bạn đang chờ được duyệt. Vui lòng đợi cán bộ xử lý.</p>
+                            <div id="roomMembersSection" class="mt-4">
+                                <div class="text-center">
+                                    <i class="fas fa-spinner fa-spin"></i> Đang tải danh sách thành viên...
+                                </div>
                             </div>
-                            ${data.data.map(reg => `
-                                <div class="card bg-light mb-2">
+                        `;
+                        
+                        // Load danh sách thành viên trong phòng
+                        loadRoomMembers(activeRegistration.room_id);
+                    } else {
+                        // Có đăng ký nhưng chưa được duyệt hoặc bị từ chối
+                        // Phân loại theo trạng thái
+                        const pendingRegs = data.data.filter(reg => reg.status === 'pending');
+                        const rejectedRegs = data.data.filter(reg => reg.status === 'rejected');
+                        const otherRegs = data.data.filter(reg => 
+                            reg.status !== 'pending' && reg.status !== 'rejected' && 
+                            reg.status !== 'active' && reg.status !== 'approved'
+                        );
+                        
+                        let content = '';
+                        
+                        if (rejectedRegs.length > 0) {
+                            content += `
+                                <div class="alert alert-danger mb-3">
+                                    <h6><i class="fas fa-times-circle me-2"></i>Đăng ký đã bị từ chối</h6>
+                                    ${rejectedRegs.map(reg => `
+                                        <div class="mb-2">
+                                            <strong>Phòng ${reg.room_number}</strong> - ${reg.building_name}
+                                            ${reg.notes ? `<br><small class="text-muted"><i>Lý do: ${reg.notes}</i></small>` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        }
+                        
+                        if (pendingRegs.length > 0) {
+                            content += `
+                                <div class="alert alert-warning mb-3">
+                                    <h6><i class="fas fa-clock me-2"></i>Đang chờ duyệt</h6>
+                                    <p>Đăng ký của bạn đang chờ được duyệt. Vui lòng đợi cán bộ xử lý.</p>
+                                </div>
+                            `;
+                        }
+                        
+                        // Hiển thị tất cả đăng ký với badge trạng thái đúng
+                        content += data.data.map(reg => {
+                            const statusBadges = {
+                                'pending': '<span class="badge bg-warning">Chờ duyệt</span>',
+                                'rejected': '<span class="badge bg-danger">Đã từ chối</span>',
+                                'approved': '<span class="badge bg-success">Đã duyệt</span>',
+                                'active': '<span class="badge bg-primary">Đang ở</span>',
+                                'completed': '<span class="badge bg-secondary">Đã kết thúc</span>'
+                            };
+                            
+                            const badge = statusBadges[reg.status] || `<span class="badge bg-secondary">${reg.status}</span>`;
+                            
+                            return `
+                                <div class="card ${reg.status === 'rejected' ? 'border-danger' : 'bg-light'} mb-2">
                                     <div class="card-body">
                                         <strong>Phòng ${reg.room_number}</strong> - ${reg.building_name}
-                                        <span class="badge bg-warning float-end">${reg.status === 'pending' ? 'Chờ duyệt' : reg.status}</span>
+                                        ${badge}
+                                        ${reg.notes && reg.status === 'rejected' ? `<br><small class="text-muted mt-2 d-block"><i>Lý do: ${reg.notes}</i></small>` : ''}
                                     </div>
                                 </div>
-                            `).join('')}
-                        `;
+                            `;
+                        }).join('');
+                        
+                        container.innerHTML = content;
                     }
                 } else {
                     // Chưa có đăng ký
@@ -955,14 +1093,14 @@
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Tháng</th>
+                                        <th>Ngày</th>
+                                        <th>Phòng</th>
+                                        <th>Tòa nhà</th>
                                         <th>Chỉ số điện</th>
                                         <th>Tiêu thụ điện</th>
                                         <th>Chỉ số nước</th>
                                         <th>Tiêu thụ nước</th>
                                         <th>Tổng tiền</th>
-                                        <th>Trạng thái</th>
-                                        <th>Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody id="utilityHistoryTable">
@@ -1001,36 +1139,72 @@
                 );
                 
                 if (!activeRegistration || !activeRegistration.room_id) {
-                    document.getElementById('utilityLoading').innerHTML = `
-                        <div class="alert alert-info">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Đăng ký của bạn đang chờ duyệt.
-                        </div>
-                    `;
+                    // Kiểm tra trạng thái đăng ký
+                    const rejectedReg = regData.data.find(reg => reg.status === 'rejected');
+                    const pendingReg = regData.data.find(reg => reg.status === 'pending');
+                    
+                    let message = '';
+                    let alertType = 'info';
+                    
+                    if (rejectedReg) {
+                        message = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-times-circle me-2"></i>
+                                <strong>Đăng ký đã bị từ chối</strong>
+                                <p class="mb-0 mt-2">
+                                    Phòng <strong>${rejectedReg.room_number}</strong> - ${rejectedReg.building_name}
+                                    ${rejectedReg.notes ? `<br><small>Lý do: ${rejectedReg.notes}</small>` : ''}
+                                </p>
+                            </div>
+                        `;
+                    } else if (pendingReg) {
+                        message = `
+                            <div class="alert alert-warning">
+                                <i class="fas fa-clock me-2"></i>
+                                <strong>Đăng ký đang chờ duyệt</strong>
+                                <p class="mb-0 mt-2">
+                                    Phòng <strong>${pendingReg.room_number}</strong> - ${pendingReg.building_name}
+                                </p>
+                                <p class="mb-0">Vui lòng đợi cán bộ xử lý.</p>
+                            </div>
+                        `;
+                    } else {
+                        message = `
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Bạn chưa có phòng được gán. Vui lòng đăng ký phòng trước.
+                            </div>
+                        `;
+                    }
+                    
+                    document.getElementById('utilityLoading').innerHTML = message;
                     return;
                 }
                 
-                // Lưu room_id để dùng sau
+                // Lưu room_id và occupancy để dùng sau
                 window.currentRoomId = activeRegistration.room_id;
+                const occupancy = parseInt(activeRegistration.current_occupancy || 1);
+                window.currentRoomOccupancy = occupancy; // Lưu để dùng trong displayUtilityHistory
                 
                 // Hiển thị thông tin phòng
                 document.getElementById('utilityContent').innerHTML = `
                     <div class="alert alert-info">
                         <i class="fas fa-door-open me-2"></i>
                         Phòng: <strong>${activeRegistration.room_number}</strong> - ${activeRegistration.building_name}
-                        (${activeRegistration.current_occupancy}/${activeRegistration.capacity} người)
+                        (${occupancy}/${parseInt(activeRegistration.capacity || 0)} người)
+                        ${occupancy > 1 ? `<br><small class="text-muted">Hóa đơn điện nước sẽ được chia đều cho ${occupancy} người trong phòng.</small>` : ''}
                     </div>
                 `;
                 document.getElementById('utilityContent').style.display = 'block';
                 document.getElementById('utilityLoading').style.display = 'none';
                 
-                // Lấy lịch sử điện nước
-                const utilityResponse = await fetch(`../../api/utilities.php?action=history&room_id=${activeRegistration.room_id}&limit=12`);
+                // Lấy lịch sử điện nước nhóm theo tháng
+                const utilityResponse = await fetch(`../../api/utilities.php?action=grouped-by-month&room_id=${activeRegistration.room_id}&limit_months=12`);
                 const utilityData = await utilityResponse.json();
                 
                 if (utilityData.success && utilityData.data && utilityData.data.length > 0) {
-                    displayUtilityHistory(utilityData.data);
-                    calculateUtilityStats(utilityData.data);
+                    displayUtilityHistoryGrouped(utilityData.data, occupancy);
+                    calculateUtilityStatsFromGrouped(utilityData.data, occupancy);
                 } else {
                     document.getElementById('utilityHistoryTable').innerHTML = `
                         <tr>
@@ -1047,12 +1221,21 @@
                     `;
                 }
                 
-                // Lấy số tiền chưa thanh toán
+                // Lấy số tiền chưa thanh toán và chia đều cho số người trong phòng
                 const unpaidResponse = await fetch(`../../api/utilities.php?action=unpaid&room_id=${activeRegistration.room_id}`);
                 const unpaidData = await unpaidResponse.json();
                 
                 if (unpaidData.success) {
-                    document.getElementById('unpaidAmount').textContent = formatCurrency(unpaidData.amount);
+                    const unpaidAmountPerPerson = occupancy > 0 ? unpaidData.amount / occupancy : unpaidData.amount;
+                    document.getElementById('unpaidAmount').textContent = formatCurrency(unpaidAmountPerPerson);
+                    
+                    // Thêm tooltip nếu có nhiều người
+                    if (occupancy > 1) {
+                        const unpaidElement = document.getElementById('unpaidAmount');
+                        unpaidElement.setAttribute('title', `Tổng phòng: ${formatCurrency(unpaidData.amount)} (${occupancy} người)`);
+                        unpaidElement.setAttribute('data-bs-toggle', 'tooltip');
+                        unpaidElement.setAttribute('data-bs-placement', 'top');
+                    }
                 }
                 
             } catch (error) {
@@ -1066,8 +1249,137 @@
             }
         }
         
+        // Hiển thị lịch sử điện nước nhóm theo tháng (mới)
+        function displayUtilityHistoryGrouped(groupedData, occupancy) {
+            const tbody = document.getElementById('utilityHistoryTable');
+            
+            if (!groupedData || groupedData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">Chưa có dữ liệu điện nước</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            groupedData.forEach((monthGroup) => {
+                const monthYear = monthGroup.month;
+                const monthName = new Date(monthYear + '-01').toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+                const records = monthGroup.records || [];
+                const summary = monthGroup.summary;
+                
+                // Header tháng
+                html += `
+                    <tr class="table-info">
+                        <td colspan="8" class="fw-bold">
+                            <i class="fas fa-calendar-alt me-2"></i>
+                            Tháng ${monthName}
+                            ${summary ? `<span class="badge bg-primary ms-2">Đã tổng hợp</span>` : ''}
+                        </td>
+                    </tr>
+                `;
+                
+                // Hiển thị records ngày trong tháng
+                if (records.length > 0) {
+                    // Sắp xếp records theo ngày tăng dần
+                    const sortedRecords = [...records].sort((a, b) => 
+                        new Date(a.reading_date) - new Date(b.reading_date)
+                    );
+                    
+                    sortedRecords.forEach((reading, index) => {
+                        // Tính tiêu thụ: so với record trước đó trong cùng tháng hoặc record cuối tháng trước
+                        let previousReading = null;
+                        
+                        if (index > 0) {
+                            previousReading = sortedRecords[index - 1];
+                        } else {
+                            // Tìm record cuối tháng trước
+                            const prevMonth = new Date(monthYear + '-01');
+                            prevMonth.setMonth(prevMonth.getMonth() - 1);
+                            const prevMonthStr = prevMonth.toISOString().substring(0, 7);
+                            const prevMonthGroup = groupedData.find(g => g.month === prevMonthStr);
+                            if (prevMonthGroup && prevMonthGroup.summary) {
+                                previousReading = prevMonthGroup.summary;
+                            }
+                        }
+                        
+                        const electricityUsage = previousReading ? 
+                            Math.max(0, reading.electricity_reading - previousReading.electricity_reading) : 
+                            reading.electricity_reading;
+                        
+                        const waterUsage = previousReading ? 
+                            Math.max(0, reading.water_reading - previousReading.water_reading) : 
+                            reading.water_reading;
+                        
+                        const amountPerPerson = occupancy > 0 ? reading.total_amount / occupancy : reading.total_amount;
+                        
+                        html += `
+                            <tr>
+                                <td><strong>${formatDate(reading.reading_date)}</strong></td>
+                                <td>${reading.room_number || '-'}</td>
+                                <td>${reading.building_name || '-'}</td>
+                                <td>${reading.electricity_reading} kWh</td>
+                                <td class="text-info fw-bold">${electricityUsage} kWh</td>
+                                <td>${reading.water_reading} m³</td>
+                                <td class="text-info fw-bold">${waterUsage} m³</td>
+                                <td class="text-danger fw-bold">
+                                    ${formatCurrency(amountPerPerson)}
+                                    ${occupancy > 1 ? `<br><small class="text-muted">(${formatCurrency(reading.total_amount)}/phòng)</small>` : ''}
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    html += `
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">Không có records ngày trong tháng này</td>
+                        </tr>
+                    `;
+                }
+                
+                // Hiển thị record tổng hợp nếu có
+                if (summary) {
+                    const totalAmountPerPerson = occupancy > 0 ? summary.total_amount / occupancy : summary.total_amount;
+                    const summaryStatus = summary.is_paid 
+                        ? '<span class="badge bg-success">Đã thanh toán</span>'
+                        : '<span class="badge bg-warning">Chưa thanh toán</span>';
+                    
+                    html += `
+                        <tr class="table-warning">
+                            <td colspan="3" class="fw-bold">
+                                <i class="fas fa-chart-pie me-2"></i>Tổng hợp tháng
+                                ${summaryStatus}
+                            </td>
+                            <td><strong>${summary.electricity_reading} kWh</strong></td>
+                            <td>-</td>
+                            <td><strong>${summary.water_reading} m³</strong></td>
+                            <td>-</td>
+                            <td class="text-danger fw-bold">
+                                ${formatCurrency(totalAmountPerPerson)}
+                                ${occupancy > 1 ? `<br><small class="text-muted">(${formatCurrency(summary.total_amount)}/phòng)</small>` : ''}
+                                ${!summary.is_paid ? `
+                                    <br><button class="btn btn-sm btn-success mt-1" onclick="createInvoiceFromReading(${summary.id}, '${formatDate(summary.reading_date)}', ${summary.total_amount})" title="Tạo hóa đơn">
+                                        <i class="fas fa-file-invoice-dollar me-1"></i>Tạo hóa đơn
+                                    </button>
+                                ` : ''}
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+            
+            tbody.innerHTML = html;
+        }
+        
+        // Hàm cũ (giữ lại để tương thích)
         function displayUtilityHistory(data) {
             const tbody = document.getElementById('utilityHistoryTable');
+            
+            // Lấy số người trong phòng từ window.currentRoomOccupancy hoặc từ activeRegistration
+            // Nếu không có, sẽ lấy từ data hoặc mặc định là 1
+            let occupancy = window.currentRoomOccupancy || 1;
             
             // Đảo ngược data để tính từ cũ → mới
             const sortedData = [...data].reverse();
@@ -1096,6 +1408,9 @@
                     Math.max(0, reading.water_reading - previousReading.water_reading) : 
                     reading.water_reading;
                 
+                // Tính số tiền đã chia đều cho từng sinh viên
+                const amountPerPerson = occupancy > 0 ? reading.total_amount / occupancy : reading.total_amount;
+                
                 const statusBadge = reading.is_paid 
                     ? '<span class="badge bg-success">Đã thanh toán</span>'
                     : '<span class="badge bg-warning">Chưa thanh toán</span>';
@@ -1107,12 +1422,17 @@
                         <td class="text-info fw-bold">${electricityUsage} kWh</td>
                         <td>${reading.water_reading} m³</td>
                         <td class="text-info fw-bold">${waterUsage} m³</td>
-                        <td class="text-danger fw-bold">${formatCurrency(reading.total_amount)}</td>
+                        <td class="text-danger fw-bold">
+                            ${formatCurrency(amountPerPerson)}
+                            ${occupancy > 1 ? `<br><small class="text-muted">(${formatCurrency(reading.total_amount)}/phòng - ${occupancy} người)</small>` : ''}
+                        </td>
                         <td>${statusBadge}</td>
                         <td>
-                            <button class="btn btn-sm btn-success me-1" onclick="createInvoiceFromReading(${reading.id}, '${formatDate(reading.reading_date)}', ${reading.total_amount})" title="Tạo hóa đơn">
-                                <i class="fas fa-file-invoice-dollar"></i>
-                            </button>
+                            ${!reading.is_paid ? `
+                                <button class="btn btn-sm btn-success me-1" onclick="createInvoiceFromReading(${reading.id}, '${formatDate(reading.reading_date)}', ${reading.total_amount})" title="Tạo hóa đơn">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                </button>
+                            ` : ''}
                             <button class="btn btn-sm btn-outline-primary" onclick="viewUtilityDetail(${reading.id})" title="Xem chi tiết">
                                 <i class="fas fa-eye"></i>
                             </button>
@@ -1122,7 +1442,76 @@
             }).join('');
         }
         
-        function calculateUtilityStats(data) {
+        // Tính stats từ dữ liệu nhóm theo tháng
+        function calculateUtilityStatsFromGrouped(groupedData, occupancy = 1) {
+            if (!groupedData || groupedData.length === 0) return;
+            
+            // Lấy tháng mới nhất
+            const latestMonth = groupedData[0];
+            const latestRecords = latestMonth.records || [];
+            const latestSummary = latestMonth.summary;
+            
+            if (latestRecords.length === 0 && !latestSummary) return;
+            
+            // Tính tổng tiêu thụ từ records ngày trong tháng mới nhất
+            let totalElectricityUsage = 0;
+            let totalWaterUsage = 0;
+            let totalAmount = 0;
+            
+            if (latestRecords.length > 0) {
+                const sortedRecords = [...latestRecords].sort((a, b) => 
+                    new Date(a.reading_date) - new Date(b.reading_date)
+                );
+                
+                // Tính tiêu thụ từ record đầu đến record cuối trong tháng
+                if (sortedRecords.length > 0) {
+                    const firstRecord = sortedRecords[0];
+                    const lastRecord = sortedRecords[sortedRecords.length - 1];
+                    
+                    // Tìm record cuối tháng trước để tính tiêu thụ
+                    let prevMonthLastReading = null;
+                    if (groupedData.length > 1) {
+                        const prevMonth = groupedData[1];
+                        if (prevMonth.summary) {
+                            prevMonthLastReading = prevMonth.summary;
+                        } else if (prevMonth.records && prevMonth.records.length > 0) {
+                            const prevRecords = [...prevMonth.records].sort((a, b) => 
+                                new Date(a.reading_date) - new Date(b.reading_date)
+                            );
+                            prevMonthLastReading = prevRecords[prevRecords.length - 1];
+                        }
+                    }
+                    
+                    const startElectricity = prevMonthLastReading ? prevMonthLastReading.electricity_reading : firstRecord.electricity_reading;
+                    const startWater = prevMonthLastReading ? prevMonthLastReading.water_reading : firstRecord.water_reading;
+                    
+                    totalElectricityUsage = Math.max(0, lastRecord.electricity_reading - startElectricity);
+                    totalWaterUsage = Math.max(0, lastRecord.water_reading - startWater);
+                    
+                    // Tổng tiền từ tất cả records ngày
+                    totalAmount = latestRecords.reduce((sum, r) => sum + (parseFloat(r.total_amount) || 0), 0);
+                }
+            } else if (latestSummary) {
+                // Nếu không có records ngày, dùng summary
+                totalAmount = parseFloat(latestSummary.total_amount) || 0;
+            }
+            
+            const amountPerPerson = occupancy > 0 ? totalAmount / occupancy : totalAmount;
+            
+            document.getElementById('totalElectricity').textContent = `${totalElectricityUsage} kWh`;
+            document.getElementById('totalWater').textContent = `${totalWaterUsage} m³`;
+            document.getElementById('totalAmount').textContent = formatCurrency(amountPerPerson);
+            
+            if (occupancy > 1) {
+                const totalAmountElement = document.getElementById('totalAmount');
+                totalAmountElement.setAttribute('title', `Tổng phòng: ${formatCurrency(totalAmount)} (${occupancy} người)`);
+                totalAmountElement.setAttribute('data-bs-toggle', 'tooltip');
+                totalAmountElement.setAttribute('data-bs-placement', 'top');
+            }
+        }
+        
+        // Hàm cũ (giữ lại để tương thích)
+        function calculateUtilityStats(data, occupancy = 1) {
             if (data.length === 0) return;
             
             // Lấy dữ liệu tháng gần nhất
@@ -1149,9 +1538,21 @@
                 ? Math.max(0, latestReading.water_reading - previousReading.water_reading)
                 : latestReading.water_reading;
             
+            // Tính số tiền đã chia đều cho từng sinh viên
+            const amountPerPerson = occupancy > 0 ? latestReading.total_amount / occupancy : latestReading.total_amount;
+            
             document.getElementById('totalElectricity').textContent = `${electricityUsage} kWh`;
             document.getElementById('totalWater').textContent = `${waterUsage} m³`;
-            document.getElementById('totalAmount').textContent = formatCurrency(latestReading.total_amount);
+            // Hiển thị số tiền đã chia cho từng người
+            document.getElementById('totalAmount').textContent = formatCurrency(amountPerPerson);
+            
+            // Thêm tooltip hoặc note nếu có nhiều người
+            if (occupancy > 1) {
+                const totalAmountElement = document.getElementById('totalAmount');
+                totalAmountElement.setAttribute('title', `Tổng phòng: ${formatCurrency(latestReading.total_amount)} (${occupancy} người)`);
+                totalAmountElement.setAttribute('data-bs-toggle', 'tooltip');
+                totalAmountElement.setAttribute('data-bs-placement', 'top');
+            }
         }
         
         async function simulateUtilityReading() {
@@ -1450,17 +1851,90 @@
         async function loadPaymentData() {
             try {
                 const filterStatus = document.getElementById('filterStatus')?.value || '';
+                
+                // Load payments
                 let url = '../../api/payments.php?my=true';
                 if (filterStatus) {
                     url += `&status=${filterStatus}`;
                 }
                 
-                const response = await fetch(url);
-                const data = await response.json();
+                const paymentsResponse = await fetch(url);
+                const paymentsData = await paymentsResponse.json();
                 
-                if (data.success && data.data) {
-                    displayPayments(data.data);
-                    calculatePaymentStats(data.data);
+                // Load utility readings chưa thanh toán cho room của student
+                let utilityBills = [];
+                if (!filterStatus || filterStatus === 'pending' || filterStatus === '') {
+                    // Lấy thông tin phòng của student
+                    const regResponse = await fetch('../../api/registrations.php?my=true');
+                    const regData = await regResponse.json();
+                    
+                    if (regData.success && regData.data && regData.data.length > 0) {
+                        const activeRegistration = regData.data.find(reg => 
+                            reg.status === 'active' || reg.status === 'approved' || reg.status === 'checked_in'
+                        );
+                        
+                        if (activeRegistration && activeRegistration.room_id) {
+                            // Lấy utility readings chưa thanh toán
+                            const utilityResponse = await fetch(`../../api/utilities.php?room_id=${activeRegistration.room_id}&action=history&limit=50`);
+                            const utilityData = await utilityResponse.json();
+                            
+                            if (utilityData.success && utilityData.data) {
+                                // Filter chỉ lấy những readings chưa thanh toán
+                                const unpaidReadings = utilityData.data.filter(r => !r.is_paid);
+                                
+                                // Lấy số sinh viên trong phòng để chia đều
+                                const occupancy = parseInt(activeRegistration.current_occupancy || 1);
+                                
+                                // Chuyển đổi utility readings thành format giống payments
+                                utilityBills = unpaidReadings.map(reading => ({
+                                    id: `UTIL-${reading.id}`,
+                                    payment_type: 'utility',
+                                    payment_date: reading.reading_date,
+                                    amount: reading.total_amount / occupancy, // Chia đều cho số sinh viên
+                                    total_amount: reading.total_amount, // Tổng tiền của phòng
+                                    status: 'pending',
+                                    notes: `Hóa đơn điện nước tháng ${new Date(reading.reading_date).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })} - Phòng ${activeRegistration.room_number}`,
+                                    is_utility: true,
+                                    utility_reading_id: reading.id,
+                                    reading_date: reading.reading_date
+                                }));
+                            }
+                        }
+                    }
+                }
+                
+                // Gộp payments và utility bills
+                let allBills = [];
+                if (paymentsData.success && paymentsData.data) {
+                    allBills = [...paymentsData.data];
+                }
+                
+                // Thêm utility bills (chỉ khi chưa có payment tương ứng)
+                utilityBills.forEach(utilityBill => {
+                    // Kiểm tra xem đã có payment tương ứng chưa (cùng payment_type = 'utility' và cùng ngày)
+                    const hasPayment = allBills.some(p => 
+                        p.payment_type === 'utility' && 
+                        p.payment_date === utilityBill.payment_date &&
+                        Math.abs(parseFloat(p.amount) - parseFloat(utilityBill.amount)) < 0.01
+                    );
+                    
+                    if (!hasPayment) {
+                        allBills.push(utilityBill);
+                    }
+                });
+                
+                // Sort theo ngày (mới nhất trước)
+                allBills.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
+                
+                // Filter theo status nếu có
+                let filteredBills = allBills;
+                if (filterStatus) {
+                    filteredBills = allBills.filter(b => b.status === filterStatus);
+                }
+                
+                if (filteredBills.length > 0) {
+                    displayPayments(filteredBills);
+                    calculatePaymentStats(allBills); // Tính stats từ tất cả bills, không chỉ filtered
                 } else {
                     document.getElementById('paymentsTableBody').innerHTML = `
                         <tr>
@@ -1470,6 +1944,7 @@
                             </td>
                         </tr>
                     `;
+                    calculatePaymentStats([]);
                 }
             } catch (error) {
                 console.error('Error loading payments:', error);
@@ -1510,20 +1985,31 @@
                     'failed': '<span class="badge bg-danger">Thất bại</span>'
                 };
                 
-                const paymentButton = payment.status === 'pending' 
-                    ? `<button class="btn btn-sm btn-success" onclick="showPaymentModal(${payment.id}, ${payment.amount})">
+                let paymentButton = '';
+                if (payment.is_utility && payment.status === 'pending') {
+                    // Hóa đơn điện nước chưa tạo invoice - cần tạo invoice trước
+                    paymentButton = `<button class="btn btn-sm btn-warning" onclick="createInvoiceFromUtility(${payment.utility_reading_id}, '${payment.reading_date}', ${payment.total_amount})" title="Tạo hóa đơn">
+                        <i class="fas fa-file-invoice me-1"></i>Tạo hóa đơn
+                       </button>`;
+                } else if (payment.status === 'pending') {
+                    paymentButton = `<button class="btn btn-sm btn-success" onclick="showPaymentModal(${payment.id}, ${payment.amount})">
                         <i class="fas fa-credit-card me-1"></i>Thanh toán
-                       </button>`
-                    : `<button class="btn btn-sm btn-outline-info" onclick="viewPaymentDetail(${payment.id})">
+                       </button>`;
+                } else {
+                    paymentButton = `<button class="btn btn-sm btn-outline-info" onclick="viewPaymentDetail(${payment.id})">
                         <i class="fas fa-eye"></i>
                        </button>`;
+                }
+                
+                // Format ID để hiển thị
+                const displayId = payment.is_utility ? `UTIL-${payment.utility_reading_id}` : `#${payment.id}`;
                 
                 return `
                     <tr>
-                        <td><strong>#${payment.id}</strong></td>
+                        <td><strong>${displayId}</strong></td>
                         <td>${typeLabels[payment.payment_type] || payment.payment_type}</td>
                         <td>${formatDate(payment.payment_date)}</td>
-                        <td class="text-danger fw-bold">${formatCurrency(payment.amount)}</td>
+                        <td class="text-danger fw-bold">${formatCurrency(payment.amount)}${payment.is_utility ? ` <small class="text-muted">(${formatCurrency(payment.total_amount)}/phòng)</small>` : ''}</td>
                         <td>${statusBadges[payment.status] || payment.status}</td>
                         <td>${payment.notes || '-'}</td>
                         <td>${paymentButton}</td>
@@ -1534,12 +2020,43 @@
         
         function calculatePaymentStats(payments) {
             const total = payments.length;
-            const unpaid = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + parseFloat(p.amount), 0);
-            const paid = payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + parseFloat(p.amount), 0);
+            const unpaid = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+            const paid = payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
             
             document.getElementById('totalInvoices').textContent = total;
             document.getElementById('unpaidInvoices').textContent = formatCurrency(unpaid);
             document.getElementById('paidInvoices').textContent = formatCurrency(paid);
+        }
+        
+        // Tạo invoice từ utility reading
+        async function createInvoiceFromUtility(readingId, readingDate, totalAmount) {
+            if (!confirm(`Tạo hóa đơn cho tháng ${new Date(readingDate).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })}?\n\nSố tiền tổng: ${formatCurrency(totalAmount)}\n\nHóa đơn sẽ được chia đều cho các sinh viên trong phòng.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('../../api/utilities.php?action=create-invoice', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        reading_id: readingId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ ' + data.message + '\n\nVui lòng làm mới trang để xem hóa đơn mới!');
+                    loadPaymentData(); // Reload danh sách
+                } else {
+                    alert('❌ Lỗi: ' + (data.error || 'Không thể tạo hóa đơn'));
+                }
+            } catch (error) {
+                console.error('Error creating invoice:', error);
+                alert('❌ Lỗi khi tạo hóa đơn: ' + error.message);
+            }
         }
         
         function showPaymentModal(paymentId, amount) {
@@ -3069,6 +3586,77 @@
         }
 
 
+        // Load danh sách thành viên trong phòng
+        async function loadRoomMembers(roomId) {
+            if (!roomId) {
+                const section = document.getElementById('roomMembersSection');
+                if (section) {
+                    section.innerHTML = '';
+                }
+                return;
+            }
+            
+            try {
+                const response = await fetch(`../../api/rooms.php?path=members&room_id=${roomId}`);
+                const data = await response.json();
+                
+                const section = document.getElementById('roomMembersSection');
+                if (!section) return;
+                
+                if (data.success && data.data && data.data.length > 0) {
+                    section.innerHTML = `
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-users me-2"></i>Thành viên trong phòng (${data.data.length})
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Họ và tên</th>
+                                                <th>Khoa</th>
+                                                <th>Số điện thoại</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${data.data.map(member => `
+                                                <tr>
+                                                    <td><strong>${member.full_name || 'N/A'}</strong></td>
+                                                    <td><span class="badge bg-info">${member.faculty || 'N/A'}</span></td>
+                                                    <td>${member.phone || '<span class="text-muted">Chưa cập nhật</span>'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    section.innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Hiện chưa có thành viên khác trong phòng.
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading room members:', error);
+                const section = document.getElementById('roomMembersSection');
+                if (section) {
+                    section.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Không thể tải danh sách thành viên.
+                        </div>
+                    `;
+                }
+            }
+        }
+        
         // Utility functions
         function formatDateTime(dateString) {
             if (!dateString) return 'N/A';
