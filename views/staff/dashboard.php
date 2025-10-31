@@ -224,13 +224,32 @@
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             checkAuth();
-            loadDashboardData();
+            
+            // Khôi phục section đã lưu hoặc load dashboard mặc định
+            const savedSection = localStorage.getItem('staffCurrentSection') || 'dashboard';
+            
+            // Load section đã lưu
+            loadSection(savedSection);
+            
+            // Cập nhật active state cho nav link
+            document.querySelectorAll('.nav-link').forEach(link => {
+                if (link.getAttribute('data-section') === savedSection) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+            
             
             // Sidebar navigation
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
                     const section = this.getAttribute('data-section');
+                    
+                    // Lưu section vào localStorage
+                    localStorage.setItem('staffCurrentSection', section);
+                    
                     loadSection(section);
                     
                     // Update active state
@@ -238,6 +257,8 @@
                     this.classList.add('active');
                 });
             });
+            
+            // Note: toggleDemoMode sẽ được định nghĩa sau, ở phần DEMO MODE
         });
 
         // Check authentication
@@ -427,6 +448,29 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Modal hiển thị thông tin chi tiết sinh viên -->
+                <div class="modal fade" id="studentDetailModal" tabindex="-1" aria-labelledby="studentDetailModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="studentDetailModalLabel">
+                                    <i class="fas fa-user-graduate me-2"></i>Thông tin chi tiết sinh viên
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body" id="studentDetailContent">
+                                <div class="text-center py-4">
+                                    <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                                    <p class="mt-2 text-muted">Đang tải thông tin...</p>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             `;
             loadRegistrationsData();
         }
@@ -481,9 +525,39 @@
                         </div>
                     </div>
                     <div class="col-md-8">
+                        <!-- Server-side Demo Daemon Info -->
+                        <div class="card mb-3 border-info">
+                            <div class="card-header bg-info text-white">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-server me-2"></i>
+                                        Mô phỏng điện nước (Server-side)
+                                    </h6>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>Hướng dẫn:</strong> Để chạy mô phỏng tự động trên server (chạy ngay cả khi logout):
+                                    <ul class="mb-0 mt-2">
+                                        <li><strong>Khởi động:</strong> Chạy file <code>scripts\\start_demo_daemon.bat</code></li>
+                                        <li><strong>Kiểm tra:</strong> Chạy file <code>scripts\\check_demo_daemon.bat</code></li>
+                                        <li><strong>Dừng:</strong> Chạy file <code>scripts\\stop_demo_daemon.bat</code></li>
+                                    </ul>
+                                    <small class="text-muted mt-2 d-block">
+                                        <i class="fas fa-terminal me-1"></i>
+                                        Hoặc chạy trực tiếp: <code>php scripts\\utility_demo_daemon.php</code>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="card">
-                            <div class="card-header">
+                            <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0"><i class="fas fa-history me-2"></i>Lịch sử chỉ số</h5>
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadUtilityHistory()">
+                                    <i class="fas fa-sync-alt"></i> Làm mới
+                                </button>
                             </div>
                             <div class="card-body">
                                 <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
@@ -491,6 +565,7 @@
                                         <thead class="table-light sticky-top">
                                             <tr>
                                                 <th>Ngày</th>
+                                                <th>Tòa nhà</th>
                                                 <th>Phòng</th>
                                                 <th>Điện (kWh)</th>
                                                 <th>Nước (m³)</th>
@@ -500,7 +575,7 @@
                                         </thead>
                                         <tbody id="utilityHistoryTable">
                                             <tr>
-                                                <td colspan="6" class="text-center text-muted">
+                                                <td colspan="7" class="text-center text-muted">
                                                     <i class="fas fa-spinner fa-spin"></i> Đang tải...
                                                 </td>
                                             </tr>
@@ -591,7 +666,7 @@
             }
             
             try {
-                const response = await fetch('../../api/utilities.php', {
+                const response = await fetch('../../api/utilities.php?action=create', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -599,25 +674,31 @@
                     body: JSON.stringify({
                         room_id: roomId,
                         reading_date: readingDate,
-                        electricity_reading: electricityReading,
-                        water_reading: waterReading,
-                        electricity_rate: electricityRate,
-                        water_rate: waterRate
+                        electricity_reading: parseInt(electricityReading),
+                        water_reading: parseFloat(waterReading),
+                        electricity_rate: parseFloat(electricityRate) || 0,
+                        water_rate: parseFloat(waterRate) || 0
                     })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Nhập chỉ số thành công!');
+                    alert('✅ Nhập chỉ số thành công!\n\n' + 
+                          (result.data ? 
+                            `Tiền điện: ${formatCurrency(result.data.electricity_amount || 0)}\n` +
+                            `Tiền nước: ${formatCurrency(result.data.water_amount || 0)}\n` +
+                            `Tổng cộng: ${formatCurrency(result.data.total_amount || 0)}` : ''));
                     document.getElementById('utilityReadingForm').reset();
+                    // Reset date to today
+                    document.getElementById('readingDate').value = new Date().toISOString().split('T')[0];
                     loadUtilityHistory();
                 } else {
-                    alert('Lỗi: ' + (result.error || 'Nhập chỉ số thất bại'));
+                    alert('❌ Lỗi: ' + (result.error || 'Nhập chỉ số thất bại'));
                 }
             } catch (error) {
                 console.error('Error submitting utility reading:', error);
-                alert('Có lỗi xảy ra khi nhập chỉ số');
+                alert('❌ Có lỗi xảy ra khi nhập chỉ số: ' + error.message);
             }
         }
         
@@ -634,23 +715,28 @@
                             ? '<span class="badge bg-success">Đã thanh toán</span>'
                             : '<span class="badge bg-warning">Chưa thanh toán</span>';
                         
+                        // Tính số lượng sử dụng (nếu có dữ liệu)
+                        const electricityUsage = reading.electricity_usage || '-';
+                        const waterUsage = reading.water_usage || '-';
+                        
                         return `
                             <tr>
                                 <td>${formatDate(reading.reading_date)}</td>
-                                <td>${reading.room_number}</td>
-                                <td>${reading.electricity_reading}</td>
-                                <td>${reading.water_reading}</td>
-                                <td>${formatCurrency(reading.total_amount)}</td>
+                                <td><small>${reading.building_name || '-'}</small></td>
+                                <td><strong>${reading.room_number || '-'}</strong></td>
+                                <td>${reading.electricity_reading || 0} ${electricityUsage !== '-' ? `<small class="text-muted">(${electricityUsage})</small>` : ''}</td>
+                                <td>${reading.water_reading || 0} ${waterUsage !== '-' ? `<small class="text-muted">(${waterUsage})</small>` : ''}</td>
+                                <td><strong class="text-primary">${formatCurrency(reading.total_amount || 0)}</strong></td>
                                 <td>${statusBadge}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Chưa có dữ liệu</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Chưa có dữ liệu</td></tr>';
                 }
             } catch (error) {
                 console.error('Error loading utility history:', error);
-                document.getElementById('utilityHistoryTable').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>';
+                document.getElementById('utilityHistoryTable').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>';
             }
         }
         
@@ -989,6 +1075,9 @@
                             <td>${formatDate(reg.start_date)}</td>
                             <td>${formatDate(reg.end_date)}</td>
                             <td>
+                                <button class="btn btn-sm btn-info me-1" onclick="viewStudentDetails(${reg.student_id || 0})" title="Xem chi tiết">
+                                    <i class="fas fa-eye"></i>
+                                </button>
                                 <button class="btn btn-sm btn-success me-1" onclick="approveRegistration(${reg.id})">
                                     <i class="fas fa-check"></i> Duyệt
                                 </button>
@@ -1006,14 +1095,234 @@
                 document.getElementById('registrationsTableBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>';
             }
         }
-
-        function approveRegistration(id) {
-            alert(`Duyệt đăng ký ${id} - Chức năng đang được phát triển`);
+        
+        // Xem chi tiết thông tin sinh viên
+        async function viewStudentDetails(studentId) {
+            if (!studentId || studentId === 0) {
+                alert('Không tìm thấy thông tin sinh viên');
+                return;
+            }
+            
+            // Hiển thị modal
+            const modal = new bootstrap.Modal(document.getElementById('studentDetailModal'));
+            modal.show();
+            
+            // Hiển thị loading
+            document.getElementById('studentDetailContent').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                    <p class="mt-2 text-muted">Đang tải thông tin...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`../../api/students.php?path=${studentId}`);
+                const data = await response.json();
+                
+                if (data.success && data.data) {
+                    const student = data.data;
+                    const genderText = student.gender === 'male' ? 'Nam' : student.gender === 'female' ? 'Nữ' : 'Không xác định';
+                    const genderIcon = student.gender === 'male' ? 'fa-mars text-primary' : student.gender === 'female' ? 'fa-venus text-danger' : 'fa-genderless text-secondary';
+                    
+                    document.getElementById('studentDetailContent').innerHTML = `
+                        <div class="row">
+                            <!-- Thông tin cơ bản -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0"><i class="fas fa-user me-2"></i>Thông tin cơ bản</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td class="text-muted" width="40%"><strong>Mã sinh viên:</strong></td>
+                                                <td><span class="badge bg-primary">${student.student_code || 'N/A'}</span></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Họ và tên:</strong></td>
+                                                <td>${student.full_name || 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Giới tính:</strong></td>
+                                                <td><i class="fas ${genderIcon} me-1"></i>${genderText}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Ngày sinh:</strong></td>
+                                                <td>${student.date_of_birth ? formatDate(student.date_of_birth) : 'Chưa cập nhật'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>CMND/CCCD:</strong></td>
+                                                <td>${student.id_card || 'Chưa cập nhật'}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Thông tin liên hệ -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0"><i class="fas fa-address-card me-2"></i>Thông tin liên hệ</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td class="text-muted" width="40%"><strong>Email:</strong></td>
+                                                <td><a href="mailto:${student.email || '#'}">${student.email || 'N/A'}</a></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Số điện thoại:</strong></td>
+                                                <td>${student.phone || 'Chưa cập nhật'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Quê quán:</strong></td>
+                                                <td>${student.hometown || 'Chưa cập nhật'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>Liên hệ khẩn cấp:</strong></td>
+                                                <td>${student.emergency_contact || 'Chưa cập nhật'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted"><strong>SĐT liên hệ:</strong></td>
+                                                <td>${student.emergency_phone || 'Chưa cập nhật'}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Thông tin học tập -->
+                            <div class="col-md-12 mb-3">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0"><i class="fas fa-graduation-cap me-2"></i>Thông tin học tập</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <tr>
+                                                        <td class="text-muted" width="40%"><strong>Khoa:</strong></td>
+                                                        <td><span class="badge bg-info">${student.faculty || 'N/A'}</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted"><strong>Lớp:</strong></td>
+                                                        <td>${student.class_name || 'Chưa cập nhật'}</td>
+                                                    </tr>
+                                                </table>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <tr>
+                                                        <td class="text-muted" width="40%"><strong>Trạng thái:</strong></td>
+                                                        <td>${student.is_active == 1 ? '<span class="badge bg-success">Đang hoạt động</span>' : '<span class="badge bg-secondary">Không hoạt động</span>'}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted"><strong>Ngày tạo:</strong></td>
+                                                        <td>${student.created_at ? formatDateTime(student.created_at) : 'N/A'}</td>
+                                                    </tr>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('studentDetailContent').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Không tìm thấy thông tin sinh viên
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading student details:', error);
+                document.getElementById('studentDetailContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Lỗi khi tải thông tin sinh viên: ${error.message}
+                    </div>
+                `;
+            }
         }
 
-        function rejectRegistration(id) {
-            if (confirm('Bạn có chắc chắn muốn từ chối đăng ký này?')) {
-                alert(`Từ chối đăng ký ${id} - Chức năng đang được phát triển`);
+        async function approveRegistration(id) {
+            if (!id) {
+                alert('Lỗi: Không tìm thấy ID đăng ký');
+                return;
+            }
+            
+            if (!confirm('Bạn có chắc chắn muốn duyệt đăng ký này?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`../../api/registrations.php?id=${id}&action=approve`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Đã duyệt đăng ký thành công!');
+                    // Reload danh sách đăng ký
+                    loadRegistrationsData();
+                } else {
+                    alert('❌ Lỗi: ' + (data.error || 'Không thể duyệt đăng ký'));
+                }
+            } catch (error) {
+                console.error('Error approving registration:', error);
+                alert('❌ Có lỗi xảy ra khi duyệt đăng ký: ' + error.message);
+            }
+        }
+
+        async function rejectRegistration(id) {
+            if (!id) {
+                alert('Lỗi: Không tìm thấy ID đăng ký');
+                return;
+            }
+            
+            // Hỏi lý do từ chối (optional)
+            const reason = prompt('Nhập lý do từ chối (có thể để trống):', '');
+            
+            if (reason === null) {
+                // User bấm Cancel
+                return;
+            }
+            
+            if (!confirm('Bạn có chắc chắn muốn từ chối đăng ký này?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`../../api/registrations.php?id=${id}&action=reject`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        reason: reason || ''
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Đã từ chối đăng ký thành công!');
+                    // Reload danh sách đăng ký
+                    loadRegistrationsData();
+                } else {
+                    alert('❌ Lỗi: ' + (data.error || 'Không thể từ chối đăng ký'));
+                }
+            } catch (error) {
+                console.error('Error rejecting registration:', error);
+                alert('❌ Có lỗi xảy ra khi từ chối đăng ký: ' + error.message);
             }
         }
 
@@ -1025,6 +1334,7 @@
         function formatDate(dateString) {
             return new Date(dateString).toLocaleDateString('vi-VN');
         }
+        
     </script>
 </body>
 </html>
