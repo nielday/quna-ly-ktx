@@ -2403,6 +2403,8 @@
                 const registrations = await safeFetch('../../api/registrations.php?status=pending', 'Registrations');
                 const feedback = await safeFetch('../../api/feedback.php?action=list&status=new', 'Feedback');
                 const maintenance = await safeFetch('../../api/maintenance.php?action=list&status=pending', 'Maintenance');
+                // Lấy hóa đơn điện nước chưa thanh toán từ utility_readings (không phải payments)
+                const utilityBills = await safeFetch('../../api/utilities.php?is_paid=false&limit=50', 'Utility Bills');
                 const activities = await safeFetch('../../api/admin/activities.php?limit=20', 'Activities');
 
                 // Tạo array thông báo tổng hợp
@@ -2462,6 +2464,49 @@
                     });
                 }
 
+                // Hóa đơn điện nước chưa thanh toán từ bảng utility_readings
+                // Trạng thái: is_paid = FALSE (khác với payments table)
+                if (utilityBills.success && utilityBills.data && Array.isArray(utilityBills.data) && utilityBills.data.length > 0) {
+                    console.log('Found unpaid utility bills:', utilityBills.data.length);
+                    
+                    utilityBills.data.forEach(bill => {
+                        const roomInfo = bill.room_number ? `Phòng ${bill.room_number}` : '';
+                        const buildingInfo = bill.building_name ? ` - ${bill.building_name}` : '';
+                        const amount = parseFloat(bill.total_amount || 0);
+                        const readingDate = bill.reading_date ? new Date(bill.reading_date).toLocaleDateString('vi-VN') : '';
+                        const studentCount = parseInt(bill.student_count || bill.current_occupancy || 0);
+                        const studentNames = bill.student_names || '';
+                        
+                        // Hiển thị thông tin sinh viên nếu có
+                        let studentInfo = '';
+                        if (studentNames && studentNames.trim() !== '') {
+                            const names = studentNames.split(', ');
+                            if (names.length <= 2) {
+                                studentInfo = ` - ${names.join(', ')}`;
+                            } else {
+                                studentInfo = ` - ${names[0]}, ${names[1]} và ${names.length - 2} người khác`;
+                            }
+                        } else if (studentCount > 0) {
+                            studentInfo = ` - ${studentCount} sinh viên`;
+                        }
+                        
+                        allNotificationsData.push({
+                            type: 'utilities',
+                            icon: 'fa-bolt',
+                            iconColor: 'warning',
+                            title: 'Hóa đơn điện nước chưa thanh toán',
+                            message: `<strong>${roomInfo}${buildingInfo}</strong>${studentInfo}: <strong>${formatCurrency(amount)}</strong> (Tháng ${readingDate})`,
+                            time: bill.created_at || bill.reading_date,
+                            action: 'utilities',
+                            badge: 'Chưa thanh toán',
+                            badgeColor: 'warning',
+                            urgent: amount > 500000 // Ưu tiên hóa đơn lớn hơn 500k
+                        });
+                    });
+                } else {
+                    console.log('No unpaid utility bills found. Response:', utilityBills);
+                }
+
                 // Activity logs quan trọng (API dùng key "activities" thay vì "data")
                 const activityData = activities.activities || activities.data || [];
                 if (activities.success && activityData.length > 0) {
@@ -2477,12 +2522,8 @@
                                 icon = 'fa-user-graduate';
                                 iconColor = 'success';
                                 title = 'Sinh viên mới đăng ký';
-                            } else if (act.action.includes('payment')) {
-                                type = 'payments';
-                                icon = 'fa-dollar-sign';
-                                iconColor = 'success';
-                                title = 'Thanh toán mới';
                             }
+                            // Bỏ phần payment từ activity logs vì đã load trực tiếp từ payments API
 
                             allNotificationsData.push({
                                 type: type,
@@ -2612,9 +2653,17 @@
         }
 
         function displayNotifications() {
-            const filteredData = currentNotificationFilter === 'all' 
-                ? allNotificationsData 
-                : allNotificationsData.filter(n => n.type === currentNotificationFilter);
+            let filteredData;
+            if (currentNotificationFilter === 'all') {
+                filteredData = allNotificationsData;
+            } else if (currentNotificationFilter === 'payments') {
+                // Hiển thị cả payments và utilities (hóa đơn điện nước)
+                filteredData = allNotificationsData.filter(n => 
+                    n.type === 'payments' || n.type === 'utilities'
+                );
+            } else {
+                filteredData = allNotificationsData.filter(n => n.type === currentNotificationFilter);
+            }
 
             if (filteredData.length === 0) {
                 document.getElementById('notificationsList').innerHTML = `
@@ -2692,6 +2741,7 @@
                 'feedback': 'feedback',
                 'maintenance': 'maintenance',
                 'payments': 'payments',
+                'utilities': 'utilities',
                 'students': 'students',
                 'activity': 'dashboard'
             };
@@ -2768,41 +2818,8 @@
                         </div>
                     </div>
 
-                    <!-- Charts Section -->
+                    <!-- Charts Section (only registration status) -->
                     <div class="row mb-4">
-                        <div class="col-md-8">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Doanh thu theo ngày</h5>
-                                </div>
-                                <div class="card-body">
-                                    <canvas id="dailyRevenueChart" height="80"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Phân loại doanh thu</h5>
-                                </div>
-                                <div class="card-body">
-                                    <canvas id="revenueTypeChart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Phân bố sinh viên theo khoa</h5>
-                                </div>
-                                <div class="card-body">
-                                    <canvas id="studentsByFacultyChart" height="250"></canvas>
-                                </div>
-                            </div>
-                        </div>
                         <div class="col-md-6">
                             <div class="card">
                                 <div class="card-header">
@@ -2810,39 +2827,6 @@
                                 </div>
                                 <div class="card-body">
                                     <canvas id="registrationStatusChart" height="250"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Detailed Tables -->
-                    <div class="row mb-4">
-                        <div class="col-md-12">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0"><i class="fas fa-table me-2"></i>Top 10 phòng có doanh thu cao</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover" id="topRoomsTable">
-                                            <thead>
-                                                <tr>
-                                                    <th>STT</th>
-                                                    <th>Phòng</th>
-                                                    <th>Tòa nhà</th>
-                                                    <th>Số lần thanh toán</th>
-                                                    <th>Tổng doanh thu</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr>
-                                                    <td colspan="5" class="text-center text-muted">
-                                                        <i class="fas fa-spinner fa-spin"></i> Đang tải...
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2863,103 +2847,32 @@
 
         // Initialize report charts
         function initializeReportCharts() {
-            // Daily Revenue Chart
-            const dailyCtx = document.getElementById('dailyRevenueChart')?.getContext('2d');
-            if (dailyCtx) {
-                window.dailyRevenueChart = new Chart(dailyCtx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Doanh thu (VNĐ)',
-                            data: [],
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return formatCurrency(value);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // Revenue Type Chart
-            const revenueTypeCtx = document.getElementById('revenueTypeChart')?.getContext('2d');
-            if (revenueTypeCtx) {
-                window.revenueTypeChart = new Chart(revenueTypeCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Tiền phòng', 'Điện nước', 'Tiền cọc'],
-                        datasets: [{
-                            data: [0, 0, 0],
-                            backgroundColor: ['#28a745', '#17a2b8', '#ffc107']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false
-                    }
-                });
-            }
-
-            // Students by Faculty Chart
-            const facultyCtx = document.getElementById('studentsByFacultyChart')?.getContext('2d');
-            if (facultyCtx) {
-                window.studentsByFacultyChart = new Chart(facultyCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Số sinh viên',
-                            data: [],
-                            backgroundColor: '#667eea'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    stepSize: 1
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
             // Registration Status Chart
             const regStatusCtx = document.getElementById('registrationStatusChart')?.getContext('2d');
             if (regStatusCtx) {
                 window.registrationStatusChart = new Chart(regStatusCtx, {
                     type: 'pie',
                     data: {
-                        labels: ['Chờ duyệt', 'Đã duyệt', 'Đang ở', 'Từ chối', 'Hoàn thành'],
+                        labels: ['Chờ duyệt', 'Đã duyệt', 'Đang ở', 'Đã nhận phòng', 'Từ chối'],
                         datasets: [{
                             data: [0, 0, 0, 0, 0],
                             backgroundColor: [
-                                '#ffc107', '#17a2b8', '#28a745', '#dc3545', '#6c757d'
+                                '#ffc107', // pending - Vàng
+                                '#17a2b8', // approved - Xanh dương
+                                '#28a745', // active - Xanh lá
+                                '#007bff', // checked_in - Xanh đậm
+                                '#dc3545'  // rejected - Đỏ
                             ]
                         }]
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: false
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
                     }
                 });
             }
@@ -2982,9 +2895,6 @@
                     
                     // Update charts
                     updateCharts(data);
-                    
-                    // Update tables
-                    updateTables(data);
                     
                     // Update detailed stats
                     updateDetailedStats(data);
@@ -3047,65 +2957,19 @@
 
         // Update charts
         function updateCharts(data) {
-            // Daily Revenue Chart
-            if (window.dailyRevenueChart && data.daily_revenue) {
-                window.dailyRevenueChart.data.labels = data.daily_revenue.map(r => formatDate(r.date));
-                window.dailyRevenueChart.data.datasets[0].data = data.daily_revenue.map(r => parseFloat(r.daily_revenue));
-                window.dailyRevenueChart.update();
-            }
-
-            // Revenue Type Chart
-            if (window.revenueTypeChart && data.revenue) {
-                window.revenueTypeChart.data.datasets[0].data = [
-                    parseFloat(data.revenue.room_revenue || 0),
-                    parseFloat(data.revenue.utility_revenue || 0),
-                    parseFloat(data.revenue.deposit_revenue || 0)
-                ];
-                window.revenueTypeChart.update();
-            }
-
-            // Students by Faculty Chart
-            if (window.studentsByFacultyChart && data.students_by_faculty) {
-                window.studentsByFacultyChart.data.labels = data.students_by_faculty.map(s => s.faculty);
-                window.studentsByFacultyChart.data.datasets[0].data = data.students_by_faculty.map(s => parseInt(s.student_count));
-                window.studentsByFacultyChart.update();
-            }
-
             // Registration Status Chart
             if (window.registrationStatusChart && data.registrations) {
                 window.registrationStatusChart.data.datasets[0].data = [
-                    parseInt(data.registrations.pending || 0),
-                    parseInt(data.registrations.approved || 0),
-                    parseInt(data.registrations.active || 0),
-                    parseInt(data.registrations.rejected || 0),
-                    parseInt(data.registrations.completed || 0)
+                    parseInt(data.registrations.pending || 0),      // Chờ duyệt
+                    parseInt(data.registrations.approved || 0),     // Đã duyệt
+                    parseInt(data.registrations.active || 0),       // Đang ở
+                    parseInt(data.registrations.checked_in || 0),   // Đã nhận phòng
+                    parseInt(data.registrations.rejected || 0)      // Từ chối
                 ];
                 window.registrationStatusChart.update();
             }
         }
 
-        // Update tables
-        function updateTables(data) {
-            // Top Rooms Table
-            if (data.top_rooms && data.top_rooms.length > 0) {
-                const tbody = document.querySelector('#topRoomsTable tbody');
-                tbody.innerHTML = data.top_rooms.map((room, index) => `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td><strong>${room.room_number}</strong></td>
-                        <td>${room.building_name}</td>
-                        <td>${room.payment_count}</td>
-                        <td><strong>${formatCurrency(parseFloat(room.total_revenue))}</strong></td>
-                    </tr>
-                `).join('');
-            } else {
-                document.querySelector('#topRoomsTable tbody').innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">Không có dữ liệu</td>
-                    </tr>
-                `;
-            }
-        }
 
         // Update detailed stats
         function updateDetailedStats(data) {
@@ -3124,10 +2988,6 @@
                                 <tr>
                                     <td>Điện nước:</td>
                                     <td class="text-end"><strong>${formatCurrency(data.revenue?.utility_revenue || 0)}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>Tiền cọc:</td>
-                                    <td class="text-end"><strong>${formatCurrency(data.revenue?.deposit_revenue || 0)}</strong></td>
                                 </tr>
                                 <tr class="table-primary">
                                     <td><strong>Tổng cộng:</strong></td>
@@ -3159,11 +3019,7 @@
                                 <tr>
                                     <td>Nữ:</td>
                                     <td class="text-end">${data.students?.female || 0}</td>
-                                </tr>
-                                <tr>
-                                    <td>Số khoa:</td>
-                                    <td class="text-end">${data.students?.faculty_count || 0}</td>
-                                </tr>
+                                </tr> 
                             </table>
                         </div>
                     </div>
