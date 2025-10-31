@@ -127,6 +127,20 @@ class RoomController {
         ]);
     }
     
+    // Lấy danh sách thành viên trong phòng
+    public function getRoomMembers($roomId) {
+        $members = $this->roomModel->getRoomMembers($roomId);
+        
+        if ($members !== false) {
+            return $this->jsonResponse([
+                'success' => true,
+                'data' => $members
+            ]);
+        } else {
+            return $this->jsonResponse(['error' => 'Failed to get room members'], 500);
+        }
+    }
+    
     // Trả về JSON response
     private function jsonResponse($data, $statusCode = 200) {
         http_response_code($statusCode);

@@ -104,7 +104,8 @@ try {
                 // Get all payments
                 $limit = $_GET['limit'] ?? 50;
                 $offset = $_GET['offset'] ?? 0;
-                $payments = $controller->getAllPayments($limit, $offset);
+                $status = $_GET['status'] ?? null; // Filter by status
+                $payments = $controller->getAllPayments($limit, $offset, $status);
                 echo json_encode(['success' => true, 'data' => $payments]);
             }
             break;

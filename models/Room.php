@@ -228,6 +228,32 @@ class Room {
         }
     }
     
+    // Lấy danh sách sinh viên trong phòng
+    public function getRoomMembers($roomId) {
+        try {
+            $query = "SELECT 
+                        s.id as student_id,
+                        s.student_code,
+                        s.faculty,
+                        u.full_name,
+                        u.phone
+                     FROM room_registrations rr
+                     JOIN students s ON rr.student_id = s.id
+                     JOIN users u ON s.user_id = u.id
+                     WHERE rr.room_id = :room_id
+                     AND rr.status IN ('active', 'approved', 'checked_in')
+                     ORDER BY u.full_name ASC";
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':room_id', $roomId);
+            $stmt->execute();
+            
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            $this->logger->error("Get room members error", ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+    
     // Đếm tổng số phòng
     public function countRooms($buildingId = null, $status = null) {
         try {

@@ -145,10 +145,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $tasks = $adminPendingTasks->getPendingTasks();
     
     if ($tasks !== false) {
+        // Tính các count riêng lẻ cho dashboard
+        $registration_count = 0;
+        $maintenance_count = 0;
+        $feedback_count = 0;
+        $payment_count = 0;
+        
+        foreach ($tasks as $task) {
+            switch ($task['type']) {
+                case 'registration':
+                    $registration_count += $task['count'];
+                    break;
+                case 'maintenance':
+                    $maintenance_count += $task['count'];
+                    break;
+                case 'feedback':
+                    $feedback_count += $task['count'];
+                    break;
+                case 'payment':
+                case 'overdue':
+                    $payment_count += $task['count'];
+                    break;
+            }
+        }
+        
+        // Đếm hóa đơn điện nước chưa thanh toán
+        try {
+            $database = new Database();
+            $conn = $database->getConnection();
+            $query = "SELECT COUNT(*) as count FROM utility_readings WHERE is_paid = FALSE";
+            $stmt = $conn->prepare($query);
+            $stmt->execute();
+            $utilityCount = $stmt->fetch()['count'];
+            $payment_count += $utilityCount; // Thêm vào payment_count
+        } catch (Exception $e) {
+            // Ignore error, continue
+        }
+        
         header('Content-Type: application/json');
         echo json_encode([
             'success' => true,
-            'tasks' => $tasks
+            'tasks' => $tasks,
+            'registration_count' => $registration_count,
+            'maintenance_count' => $maintenance_count,
+            'feedback_count' => $feedback_count,
+            'payment_count' => $payment_count
         ]);
     } else {
         http_response_code(500);

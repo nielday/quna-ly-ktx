@@ -27,6 +27,17 @@ switch ($path) {
             $controller->getAvailableRooms();
         }
         break;
+    case 'members':
+        if ($method === 'GET') {
+            $roomId = $_GET['room_id'] ?? null;
+            if (!$roomId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Room ID is required']);
+                exit;
+            }
+            $controller->getRoomMembers($roomId);
+        }
+        break;
     default:
         $roomId = (int)$path;
         if ($roomId > 0) {

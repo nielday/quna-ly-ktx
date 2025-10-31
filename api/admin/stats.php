@@ -135,18 +135,18 @@ class AdminStats {
             ];
             
             // 2. THỐNG KÊ ĐĂNG KÝ PHÒNG
+            // Hiển thị tất cả đăng ký theo trạng thái hiện tại (không filter theo ngày)
+            // để biểu đồ phản ánh đúng trạng thái hiện tại của hệ thống
+            // Bỏ trạng thái 'completed' vì đó là lịch sử, không phản ánh trạng thái hiện tại
             $query = "SELECT 
                         COUNT(*) as total,
                         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
                         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
                         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
-                        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-                        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-                     FROM room_registrations 
-                     WHERE created_at BETWEEN :start_date AND :end_date";
+                        SUM(CASE WHEN status = 'checked_in' THEN 1 ELSE 0 END) as checked_in,
+                        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                     FROM room_registrations";
             $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':start_date', $startDate);
-            $stmt->bindParam(':end_date', $endDate);
             $stmt->execute();
             $registrationStats = $stmt->fetch();
             $stats['registrations'] = [
@@ -154,8 +154,8 @@ class AdminStats {
                 'pending' => (int)$registrationStats['pending'],
                 'approved' => (int)$registrationStats['approved'],
                 'active' => (int)$registrationStats['active'],
-                'rejected' => (int)$registrationStats['rejected'],
-                'completed' => (int)$registrationStats['completed']
+                'checked_in' => (int)$registrationStats['checked_in'],
+                'rejected' => (int)$registrationStats['rejected']
             ];
             
             // 3. THỐNG KÊ SINH VIÊN
